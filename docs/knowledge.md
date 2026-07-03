@@ -7,6 +7,9 @@
 - 2026-07-01: Phase1 実行基盤を AWS（EventBridge Scheduler + Lambda）に確定。「毎朝送るだけには過剰」との Codex 指摘は承知の上で、将来の Webhook 受信・エージェント化への接続と学習を優先。
 - 2026-07-01: 要約モデルは Nova で開始し、品質不足なら Claude に切り替える方針。
 - 2026-07-01: Codex クロスレビュー（20項目）を plan.md に反映。主な追加=状態管理（重複送信防止）、Phase1完了条件、配信フォーマット（上位N件・LINE長文対策）、AgentCore はトーンダウンして候補扱い。
+- 2026-07-06: plan.md の未決事項を確定し spec.md を作成。決定=送信は上限なし全件/毎朝7時JST/フィルタは Nova 実測後に追加（初期は全件通過）/状態ストアは DynamoDB/要約は Nova(nova-lite 第一候補)で開始/IaC は CDK(Python 第一候補)。
+- 2026-07-06: 「全件・フィルタ後回し」だと初回に過去記事を一斉 Push する暴発リスクがあるため、SEED_MODE(既定false) を導入。初回だけ true で既読化(status=seeded)し送らない、以降は差分のみ送る設計にした。
+- 2026-07-06: CDK 言語は Python に確定（Lambda と統一）。LINE は既存の line-notify 個人通知チャネルを流用（正本 ~/.secrets/line-notify.env → SSM SecureString へ登録して Lambda 参照）。connpass/duolingo と同じ LINE に混在するのは許容。
 
 ## 知見 / ハマり
 - Codex CLI 0.130.0 は画像生成に対応（`codex features list` に image_generation stable）。
