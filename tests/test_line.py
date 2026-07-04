@@ -62,6 +62,18 @@ def test_5000文字を超える本文は複数チャンクへ分割される() -
     assert all(len(chunk.text) <= 5000 for chunk in chunks)
 
 
+def test_ヘッダー日付はUTC実行環境でもJSTの日付になる() -> None:
+    # 毎朝7時JST の実行は UTC では前日22時。Lambda(UTC) でも JST の日付が出ること。
+    summaries = [_summary(1)]
+
+    chunks = build_message_chunks(
+        summaries,
+        now=datetime(2026, 7, 5, 22, 0, tzinfo=UTC),
+    )
+
+    assert chunks[0].text.startswith("AWS What's New 2026-07-06")
+
+
 def test_push送信は5メッセージごとにリクエストを分割する() -> None:
     chunks = [
         MessageChunk(text=f"message {index}", article_ids=(f"id-{index}",))

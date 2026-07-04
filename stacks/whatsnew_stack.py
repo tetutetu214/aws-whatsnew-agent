@@ -37,7 +37,7 @@ class WhatsNewStack(Stack):
             runtime=lambda_.Runtime.PYTHON_3_12,
             handler="handler.lambda_handler",
             code=lambda_.Code.from_asset("src"),
-            timeout=Duration.seconds(60),
+            timeout=Duration.seconds(300),
             memory_size=256,
             environment={
                 "TABLE_NAME": table.table_name,
@@ -56,7 +56,6 @@ class WhatsNewStack(Stack):
                 actions=[
                     "dynamodb:GetItem",
                     "dynamodb:PutItem",
-                    "dynamodb:BatchGetItem",
                 ],
                 resources=[table.table_arn],
             )
@@ -65,7 +64,7 @@ class WhatsNewStack(Stack):
             iam.PolicyStatement(
                 actions=["bedrock:InvokeModel"],
                 resources=[
-                    "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*"
+                    f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-*"
                 ],
             )
         )

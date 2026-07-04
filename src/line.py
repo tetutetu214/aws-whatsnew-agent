@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 from urllib import request
 import json
@@ -15,6 +15,9 @@ LOGGER = logging.getLogger(__name__)
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 LINE_TEXT_LIMIT = 5000
 LINE_MESSAGES_PER_REQUEST = 5
+# Lambda 実行環境は UTC のため astimezone() 任せだと朝7時JST実行で前日の日付になる。
+# JST は夏時間がなく固定 +9 で正確（tzdata 依存も避けられる）。
+JST = timezone(timedelta(hours=9), name="JST")
 
 
 @dataclass(frozen=True)
@@ -39,7 +42,7 @@ def build_message_chunks(
         return []
 
     current_now = now or datetime.now(UTC)
-    date_text = current_now.astimezone().strftime("%Y-%m-%d")
+    date_text = current_now.astimezone(JST).strftime("%Y-%m-%d")
     header = f"AWS What's New {date_text}: {len(article_summaries)}件"
     chunks: list[MessageChunk] = []
     current_lines = [header]
