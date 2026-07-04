@@ -28,8 +28,8 @@ class WhatsNewStack(Stack):
             removal_policy=RemovalPolicy.DESTROY,
         )
 
-        line_token_param = "/aws-whatsnew-agent/line/channel_token"
-        line_user_id_param = "/aws-whatsnew-agent/line/user_id"
+        line_token_param = "/whatsnew-agent/line/channel_token"
+        line_user_id_param = "/whatsnew-agent/line/user_id"
 
         worker = lambda_.Function(
             self,

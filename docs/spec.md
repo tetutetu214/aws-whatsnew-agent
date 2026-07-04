@@ -59,7 +59,7 @@
   - CloudWatch Logs 書き込み（基本ロール）
 - シークレット:
   - LINE チャネルアクセストークン / 自分の USER_ID を **SSM Parameter Store SecureString** に格納。
-  - パラメータ名（例）: `/aws-whatsnew-agent/line/channel_token`, `/aws-whatsnew-agent/line/user_id`
+  - パラメータ名（例）: `/whatsnew-agent/line/channel_token`, `/whatsnew-agent/line/user_id`
   - CDK コードにはトークン値を書かず、既に SSM に置いた SecureString を name 参照する（値はデプロイ前に手動 or CLI で put）。
   - ローカル開発は `~/.secrets/aws-whatsnew-agent.env`。リポジトリには `.env.example` のみ。
 - リージョン: **us-east-1** を第一候補。使う Nova モデルの可用性を実装前に `aws bedrock list-foundation-models` で確認し、不可なら us-west-2 に切替。
