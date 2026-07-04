@@ -12,5 +12,10 @@ __pycache__/
 .venv/
 venv/
 
+# CDK
+cdk.out/
+.cdk.staging/
+cdk.context.json
+
 # misc
 .DS_Store

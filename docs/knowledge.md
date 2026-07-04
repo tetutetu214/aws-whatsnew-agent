@@ -11,7 +11,20 @@
 - 2026-07-06: 「全件・フィルタ後回し」だと初回に過去記事を一斉 Push する暴発リスクがあるため、SEED_MODE(既定false) を導入。初回だけ true で既読化(status=seeded)し送らない、以降は差分のみ送る設計にした。
 - 2026-07-06: CDK 言語は Python に確定（Lambda と統一）。LINE は既存の line-notify 個人通知チャネルを流用（正本 ~/.secrets/line-notify.env → SSM SecureString へ登録して Lambda 参照）。connpass/duolingo と同じ LINE に混在するのは許容。
 
+## 学習済み概念（理解度テスト正解済み・次回スキップ可）
+- 2026-07-06: CDK の本質 = Python コードを CloudFormation テンプレートに synth して deploy する（プログラミング言語で IaC を書ける）。
+- 2026-07-06: DynamoDB 冪等 + SEED_MODE の目的 = 何度実行しても二重送信せず、初回の過去記事一斉送信も防ぐ。
+- 2026-07-06: Bedrock ON_DEMAND を選ぶ理由 = モデルID を直接呼べ、INFERENCE_PROFILE 必須モデルのようなクロスリージョン推論プロファイル ARN の事前作成が不要。
+
+## 実測メモ
+- 2026-07-06: us-east-1 の Nova 可用性を確認。`amazon.nova-lite-v1:0` と `amazon.nova-micro-v1:0` は ON_DEMAND 対応（推論プロファイル不要で Converse 直呼び出し可）。`amazon.nova-2-lite-v1:0` は INFERENCE_PROFILE 必須。短い日本語要約なので Nova Micro を第一候補、品質不足なら Lite に上げる。
+
 ## 知見 / ハマり
+- 2026-07-06: What's New RSS は1回で100件返る。SEED_MODE 無しの初回実行だと100件を要約＆Push してしまうため、初回 SEED_MODE=true の既読化が必須と実測で裏付け。
+- 2026-07-06: RSS の description は `<p>` 等の HTML タグ入り。要約入力を汚さないよう rss.py でタグ除去＋エンティティ復号＋空白整形を実施。
+- 2026-07-06: `python app.py` を CDK CLI 無しで直接叩くと cdk.out が出ない（標準出力先が temp になる）。synth 検証は `cdk synth`、または App(outdir='cdk.out') を明示して呼ぶ。
+- 2026-07-06: Bedrock Converse API の呼び出し権限は `bedrock:InvokeModel`。ON_DEMAND 基盤モデルの ARN はアカウント無し（`arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*`）。
+
 - Codex CLI 0.130.0 は画像生成に対応（`codex features list` に image_generation stable）。
   - コマンド: `codex exec --model gpt-5.5 --sandbox workspace-write --skip-git-repo-check "..." < /dev/null`
   - 画像は `~/.codex/generated_images/<uuid>/` に出力。日本語文字も崩れず描画できた実績あり。
