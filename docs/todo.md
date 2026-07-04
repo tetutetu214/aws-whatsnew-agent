@@ -1,9 +1,7 @@
 # todo.md — aws-whatsnew-agent
 
-## 進行中
-- [ ] PR レビュー・マージ（feature/phase1-implementation）
-
-## 次（デプロイ・疎通フェーズ）
+## 進行中（デプロイ・疎通フェーズ）
+- [ ] てつてつが `aws login` → 認証確認後に着手
 - [ ] SSM に LINE トークン/USER_ID を SecureString で登録（~/.secrets/line-notify.env の値）
 - [ ] cdk bootstrap（未実施なら）→ cdk deploy（us-east-1）
 - [ ] 初回 SEED_MODE=true で手動実行 → 既存記事を既読化（暴発防止の実確認）
@@ -11,6 +9,7 @@
 - [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）
 
 ## 完了
+- [x] PR #1 レビュー・マージ（Fable レビューで JST 日付バグ等 4 件修正 → merge 済み）
 - [x] プロジェクト初期化（git init, docs 骨格, CLAUDE.md）
 - [x] Codex による plan.md クロスレビュー（20項目）と反映
 - [x] 実行基盤の決定（AWS EventBridge+Lambda に確定）

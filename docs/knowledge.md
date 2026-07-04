@@ -20,6 +20,8 @@
 - 2026-07-06: us-east-1 の Nova 可用性を確認。`amazon.nova-lite-v1:0` と `amazon.nova-micro-v1:0` は ON_DEMAND 対応（推論プロファイル不要で Converse 直呼び出し可）。`amazon.nova-2-lite-v1:0` は INFERENCE_PROFILE 必須。短い日本語要約なので Nova Micro を第一候補、品質不足なら Lite に上げる。
 
 ## 知見 / ハマり
+- 2026-07-04: PR #1 の Fable レビューで検出・修正した4件。①`astimezone()` 引数なしは実行環境のローカルTZ に変換されるため、Lambda(UTC) では朝7時JST実行時にヘッダーが前日日付になる → JST 固定オフセット(+9)で修正（JST は夏時間なし、tzdata 依存も回避）。②Lambda タイムアウト60秒は記事滞留日（re:Invent 期等）に直列 Bedrock 要約が超過→全滅→翌日も全滅のループリスク → 300秒に引き上げ。③未使用 `dynamodb:BatchGetItem` 権限を削除。④Bedrock ARN の us-east-1 ハードコードを self.region に統一。
+- 2026-07-04: snap 版 gh は `gh pr merge` 不可のため `gh api repos/.../pulls/1/merge -X PUT -f merge_method=merge` でマージ（既知の回避策）。
 - 2026-07-06: What's New RSS は1回で100件返る。SEED_MODE 無しの初回実行だと100件を要約＆Push してしまうため、初回 SEED_MODE=true の既読化が必須と実測で裏付け。
 - 2026-07-06: RSS の description は `<p>` 等の HTML タグ入り。要約入力を汚さないよう rss.py でタグ除去＋エンティティ復号＋空白整形を実施。
 - 2026-07-06: `python app.py` を CDK CLI 無しで直接叩くと cdk.out が出ない（標準出力先が temp になる）。synth 検証は `cdk synth`、または App(outdir='cdk.out') を明示して呼ぶ。
