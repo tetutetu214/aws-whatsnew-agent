@@ -29,11 +29,11 @@ def load_config(environ: dict[str, str] | None = None) -> Config:
         bedrock_model_id=values.get("BEDROCK_MODEL_ID", DEFAULT_MODEL_ID),
         line_token_param=values.get(
             "LINE_TOKEN_PARAM",
-            "/aws-whatsnew-agent/line/channel_token",
+            "/whatsnew-agent/line/channel_token",
         ),
         line_user_id_param=values.get(
             "LINE_USER_ID_PARAM",
-            "/aws-whatsnew-agent/line/user_id",
+            "/whatsnew-agent/line/user_id",
         ),
         seed_mode=values.get("SEED_MODE", "false").lower() == "true",
         exclude_services=tuple(
