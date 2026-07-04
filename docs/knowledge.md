@@ -12,6 +12,9 @@
 - 2026-07-06: CDK 言語は Python に確定（Lambda と統一）。LINE は既存の line-notify 個人通知チャネルを流用（正本 ~/.secrets/line-notify.env → SSM SecureString へ登録して Lambda 参照）。connpass/duolingo と同じ LINE に混在するのは許容。
 
 ## 学習済み概念（理解度テスト正解済み・次回スキップ可）
+- 2026-07-04: IAM ロールの分離 = 「呼ぶ側」と「呼ばれる側」は別主体。Scheduler が Lambda を起動する権限は scheduler.amazonaws.com が assume する専用ロールに持たせる（Lambda 実行ロールとは別物）。
+- 2026-07-04: SecureString の復号 = AWS 管理キー（aws/ssm）はキーポリシーが SSM 経由の利用をアカウント内に許可済みのため、呼び出し側は ssm:GetParameter だけでよい。カスタマー管理キーなら kms:Decrypt が必要。
+- 2026-07-04: 本スタックの固定費 = ほぼゼロ（DynamoDB オンデマンド/Lambda/Scheduler 無料枠/SSM Standard すべて従量・無料。課金は Bedrock 要約の従量分のみ）。
 - 2026-07-06: CDK の本質 = Python コードを CloudFormation テンプレートに synth して deploy する（プログラミング言語で IaC を書ける）。
 - 2026-07-06: DynamoDB 冪等 + SEED_MODE の目的 = 何度実行しても二重送信せず、初回の過去記事一斉送信も防ぐ。
 - 2026-07-06: Bedrock ON_DEMAND を選ぶ理由 = モデルID を直接呼べ、INFERENCE_PROFILE 必須モデルのようなクロスリージョン推論プロファイル ARN の事前作成が不要。
@@ -20,6 +23,10 @@
 - 2026-07-06: us-east-1 の Nova 可用性を確認。`amazon.nova-lite-v1:0` と `amazon.nova-micro-v1:0` は ON_DEMAND 対応（推論プロファイル不要で Converse 直呼び出し可）。`amazon.nova-2-lite-v1:0` は INFERENCE_PROFILE 必須。短い日本語要約なので Nova Micro を第一候補、品質不足なら Lite に上げる。
 
 ## 知見 / ハマり
+- 2026-07-04: **SSM パラメータ名は `aws` / `ssm` で始まる名前が予約されていて登録不可**（AccessDeniedException: No access to reserved parameter name）。プロジェクト名が aws- で始まる場合はそのままパラメータ名に使えない。`/aws-whatsnew-agent/...` → `/whatsnew-agent/...` に変更（PR #2）。
+- 2026-07-04: `aws lambda update-function-configuration --environment` は**環境変数の全置換**（マージではない）。既存の全変数を含む `{"Variables": {...}}` 形式の JSON を渡す。get-function-configuration で取得した Variables マップをそのまま渡すとラッパー不足で ParamValidation エラー。
+- 2026-07-04: 疎通確認の手法 = 全件既読の状態で DynamoDB から1件 delete-item → 本番モードで invoke すると「人工新着1件」で要約→LINE Push の全経路を検証できる。レコードは送信成功時に mark_sent で自動再作成されるため後始末不要。
+- 2026-07-04: CDKToolkit スタックが UPDATE_ROLLBACK_COMPLETE でも bootstrap version 25 が生きていれば cdk deploy は正常に動く（再 bootstrap 不要だった）。
 - 2026-07-04: PR #1 の Fable レビューで検出・修正した4件。①`astimezone()` 引数なしは実行環境のローカルTZ に変換されるため、Lambda(UTC) では朝7時JST実行時にヘッダーが前日日付になる → JST 固定オフセット(+9)で修正（JST は夏時間なし、tzdata 依存も回避）。②Lambda タイムアウト60秒は記事滞留日（re:Invent 期等）に直列 Bedrock 要約が超過→全滅→翌日も全滅のループリスク → 300秒に引き上げ。③未使用 `dynamodb:BatchGetItem` 権限を削除。④Bedrock ARN の us-east-1 ハードコードを self.region に統一。
 - 2026-07-04: snap 版 gh は `gh pr merge` 不可のため `gh api repos/.../pulls/1/merge -X PUT -f merge_method=merge` でマージ（既知の回避策）。
 - 2026-07-06: What's New RSS は1回で100件返る。SEED_MODE 無しの初回実行だと100件を要約＆Push してしまうため、初回 SEED_MODE=true の既読化が必須と実測で裏付け。

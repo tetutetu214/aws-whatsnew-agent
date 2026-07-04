@@ -1,14 +1,12 @@
 # todo.md — aws-whatsnew-agent
 
-## 進行中（デプロイ・疎通フェーズ）
-- [ ] てつてつが `aws login` → 認証確認後に着手
-- [ ] SSM に LINE トークン/USER_ID を SecureString で登録（~/.secrets/line-notify.env の値）
-- [ ] cdk bootstrap（未実施なら）→ cdk deploy（us-east-1）
-- [ ] 初回 SEED_MODE=true で手動実行 → 既存記事を既読化（暴発防止の実確認）
-- [ ] SEED_MODE=false で手動実行 → 自分に LINE 到達を確認（200でも届かない罠に注意）
+## 進行中（運用観測フェーズ）
+- [ ] LINE 到達をてつてつのスマホで実機確認（2026-07-04 疎通テスト送信済み: GameLift の記事1件）
+- [ ] 明日朝7時JST の定期実行が自然に動くことを確認
 - [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）
 
 ## 完了
+- [x] 2026-07-04 デプロイ・疎通: SSM SecureString 登録（PR #2 でパラメータ名修正）→ cdk deploy 成功（9リソース）→ SEED_MODE=true で100件既読化（暴発ゼロ確認）→ 1件人工新着で本番実行 sent=1・status=sent 再記録・ログにエラーなし
 - [x] PR #1 レビュー・マージ（Fable レビューで JST 日付バグ等 4 件修正 → merge 済み）
 - [x] プロジェクト初期化（git init, docs 骨格, CLAUDE.md）
 - [x] Codex による plan.md クロスレビュー（20項目）と反映
