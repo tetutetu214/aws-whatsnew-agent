@@ -19,8 +19,10 @@
 - 2026-07-06: DynamoDB 冪等 + SEED_MODE の目的 = 何度実行しても二重送信せず、初回の過去記事一斉送信も防ぐ。
 - 2026-07-06: Bedrock ON_DEMAND を選ぶ理由 = モデルID を直接呼べ、INFERENCE_PROFILE 必須モデルのようなクロスリージョン推論プロファイル ARN の事前作成が不要。
 - 2026-07-06: DynamoDB スキーマレス = テーブル定義が強制するのはパーティションキー（+ソートキー）のみで、属性追加に ALTER TABLE 相当は不要。put_item は「アイテム全体の置き換え」（マージではない。部分更新は update_item）。属性の有無が混在するレコードは読む側が「属性なし」に備えれば共存できる（旧レコードの一括更新は不要）。
+- 2026-07-06: デプロイ3軸（PR #3）= Lambda コードのみの変更なら cdk deploy で更新されるのは Lambda だけ（テーブル/Scheduler/IAM は不変）。DynamoDB オンデマンドの書き込み課金は 1KB 単位のリクエスト数なので短い属性追加はコスト不変。ロールバックは前コミットで再デプロイ（保存済みの余分な属性は無害で TTL で消える）。
 
 ## 実測メモ
+- 2026-07-06: Nova Micro 要約の初サンプル1件（GameLift DDoS SDK 記事）: 内容は正確だが「〜なりました。」と「〜させる。」の敬体/常体混在、指定1〜2行に対し2文でやや長め。判定は実配信数日分で行う（summary が DynamoDB に貯まる）。
 - 2026-07-06: us-east-1 の Nova 可用性を確認。`amazon.nova-lite-v1:0` と `amazon.nova-micro-v1:0` は ON_DEMAND 対応（推論プロファイル不要で Converse 直呼び出し可）。`amazon.nova-2-lite-v1:0` は INFERENCE_PROFILE 必須。短い日本語要約なので Nova Micro を第一候補、品質不足なら Lite に上げる。
 
 ## 知見 / ハマり

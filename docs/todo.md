@@ -1,10 +1,10 @@
 # todo.md — aws-whatsnew-agent
 
 ## 進行中（運用観測フェーズ）
-- [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）— 週末は新着ゼロで実データなし。週明け 7/7 朝の配信が最初の実測機会
-- [ ] 【実装中】要約品質の記録: mark_sent 時に DynamoDB へ summary + model_id を追加保存する（2026-07-06 てつてつ承認、7/7 初回実配信からデータを貯めるため先行実装。feature ブランチ → PR）
+- [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）— 7/7(火) 朝から実配信データが DynamoDB に summary 付きで貯まる。初サンプル1件では敬体/常体の混在あり（knowledge.md 実測メモ参照）。数日分貯まったら品質判定
 
 ## 完了
+- [x] 2026-07-06 要約品質記録の実装（PR #3）: mark_sent 時に summary + model_id を DynamoDB へ追加保存。Opus サブエージェント実装 → Fable レビュー → テスト19件パス → マージ → cdk deploy（Lambda のみ更新21秒）→ 1件 delete→invoke の実機検証で summary/model_id 保存を確認（sent=1）
 - [x] 2026-07-06 LINE 到達の実機確認: 7/4 疎通テスト（GameLift 記事1件）がてつてつのスマホに到達済みと本人確認
 - [x] 2026-07-06 定期実行の観測: 7/5・7/6 とも朝7時JST に EventBridge Scheduler から Lambda が正常起動（CloudWatch Logs 確認）。両日「Found 0 unsent articles」= 週末で新着なし・重複送信防止が正しく機能。エラーなし
 - [x] 2026-07-04 デプロイ・疎通: SSM SecureString 登録（PR #2 でパラメータ名修正）→ cdk deploy 成功（9リソース）→ SEED_MODE=true で100件既読化（暴発ゼロ確認）→ 1件人工新着で本番実行 sent=1・status=sent 再記録・ログにエラーなし
