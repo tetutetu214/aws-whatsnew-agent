@@ -30,13 +30,26 @@ class SentArticleStore:
         )
         return "Item" not in response
 
-    def mark_sent(self, article: Article) -> None:
-        self._put_article(article, status="sent", sent_at=_now_iso())
+    def mark_sent(self, article: Article, summary: str = "", model_id: str = "") -> None:
+        self._put_article(
+            article,
+            status="sent",
+            sent_at=_now_iso(),
+            summary=summary,
+            model_id=model_id,
+        )
 
     def mark_seeded(self, article: Article) -> None:
         self._put_article(article, status="seeded", sent_at="")
 
-    def _put_article(self, article: Article, status: str, sent_at: str) -> None:
+    def _put_article(
+        self,
+        article: Article,
+        status: str,
+        sent_at: str,
+        summary: str = "",
+        model_id: str = "",
+    ) -> None:
         item = {
             "article_id": {"S": article.article_id},
             "title": {"S": article.title},
@@ -47,6 +60,11 @@ class SentArticleStore:
         }
         if sent_at:
             item["sent_at"] = {"S": sent_at}
+        # 空文字のときは属性自体を付けない（後からのモデル比較で無駄な空値を残さない）。
+        if summary:
+            item["summary"] = {"S": summary}
+        if model_id:
+            item["model_id"] = {"S": model_id}
         self.client.put_item(TableName=self.table_name, Item=item)
 
 

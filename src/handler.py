@@ -82,10 +82,19 @@ def run_pipeline(
     )
     sent_article_ids = send_chunks_func(user_id, token, chunks)
 
+    # article_id から対応する要約文を引くための対応表。記事と要約のズレを防ぐ。
+    summary_by_article_id = {
+        item.article.article_id: item.summary for item in article_summaries
+    }
+
     sent_count = 0
     for article in target_articles:
         if article.article_id in sent_article_ids:
-            article_store.mark_sent(article)
+            article_store.mark_sent(
+                article,
+                summary=summary_by_article_id.get(article.article_id, ""),
+                model_id=app_config.bedrock_model_id,
+            )
             sent_count += 1
 
     return {
