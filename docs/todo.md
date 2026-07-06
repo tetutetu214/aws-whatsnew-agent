@@ -2,11 +2,11 @@
 
 ## 進行中（運用観測フェーズ）
 - [ ] LINE 到達をてつてつのスマホで実機確認（2026-07-04 疎通テスト送信済み: GameLift の記事1件）
-- [ ] 明日朝7時JST の定期実行が自然に動くことを確認
-- [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）
+- [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）— 週末は新着ゼロで実データなし。週明け 7/7 朝の配信が最初の実測機会
 - [ ] 【アイデア・未着手】要約品質の記録: mark_sent 時に DynamoDB へ summary + model_id を追加保存する（原文 title/link と同一レコードで突き合わせ可能・モデル切替時の実測比較の土台になる。2026-07-04 発案、LINE 到達と初期品質を確認してから実装判断）
 
 ## 完了
+- [x] 2026-07-06 定期実行の観測: 7/5・7/6 とも朝7時JST に EventBridge Scheduler から Lambda が正常起動（CloudWatch Logs 確認）。両日「Found 0 unsent articles」= 週末で新着なし・重複送信防止が正しく機能。エラーなし
 - [x] 2026-07-04 デプロイ・疎通: SSM SecureString 登録（PR #2 でパラメータ名修正）→ cdk deploy 成功（9リソース）→ SEED_MODE=true で100件既読化（暴発ゼロ確認）→ 1件人工新着で本番実行 sent=1・status=sent 再記録・ログにエラーなし
 - [x] PR #1 レビュー・マージ（Fable レビューで JST 日付バグ等 4 件修正 → merge 済み）
 - [x] プロジェクト初期化（git init, docs 骨格, CLAUDE.md）
