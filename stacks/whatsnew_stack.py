@@ -1,8 +1,14 @@
+import os
+
 from aws_cdk import Duration, RemovalPolicy, Stack
+from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
 from aws_cdk import aws_scheduler as scheduler
+from aws_cdk import aws_sns as sns
+from aws_cdk import aws_sns_subscriptions as sns_subscriptions
 from constructs import Construct
 
 
@@ -111,3 +117,49 @@ class WhatsNewStack(Stack):
                 role_arn=scheduler_role.role_arn,
             ),
         )
+
+        # 死活アラートの通知先 SNS トピック。
+        # 配信先メールは環境変数 ALERT_EMAIL から受け取り、未設定ならトピックのみ作る。
+        alert_topic = sns.Topic(
+            self,
+            "AlertTopic",
+            display_name="aws-whatsnew-agent-alerts",
+        )
+        alert_email = os.environ.get("ALERT_EMAIL")
+        if alert_email:
+            alert_topic.add_subscription(
+                sns_subscriptions.EmailSubscription(alert_email)
+            )
+
+        alarm_action = cloudwatch_actions.SnsAction(alert_topic)
+
+        # アラーム1: Lambda がエラー終了したら通知する。
+        # 5分粒度で1回でもエラーが出れば発報。エラー0件（データなし）は正常なので NOT_BREACHING。
+        error_alarm = cloudwatch.Alarm(
+            self,
+            "WorkerErrorAlarm",
+            metric=worker.metric_errors(period=Duration.minutes(5)),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=(
+                cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD
+            ),
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+            alarm_description="WhatsNew Lambda がエラー終了した",
+        )
+        error_alarm.add_alarm_action(alarm_action)
+
+        # アラーム2: デッドマンスイッチ。24時間で起動が1回未満なら通知する。
+        # Scheduler 停止や設定ミスで一度も起動しない状態を検知するため、
+        # データなし（＝起動記録が存在しない）を BREACHING として障害扱いにする。
+        missing_invocation_alarm = cloudwatch.Alarm(
+            self,
+            "WorkerMissingInvocationAlarm",
+            metric=worker.metric_invocations(period=Duration.hours(24)),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.BREACHING,
+            alarm_description="WhatsNew Lambda が24時間起動していない（Scheduler停止等）",
+        )
+        missing_invocation_alarm.add_alarm_action(alarm_action)
