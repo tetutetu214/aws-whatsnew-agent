@@ -10,8 +10,13 @@
 - 2026-07-06: plan.md の未決事項を確定し spec.md を作成。決定=送信は上限なし全件/毎朝7時JST/フィルタは Nova 実測後に追加（初期は全件通過）/状態ストアは DynamoDB/要約は Nova(nova-lite 第一候補)で開始/IaC は CDK(Python 第一候補)。
 - 2026-07-06: 「全件・フィルタ後回し」だと初回に過去記事を一斉 Push する暴発リスクがあるため、SEED_MODE(既定false) を導入。初回だけ true で既読化(status=seeded)し送らない、以降は差分のみ送る設計にした。
 - 2026-07-06: CDK 言語は Python に確定（Lambda と統一）。LINE は既存の line-notify 個人通知チャネルを流用（正本 ~/.secrets/line-notify.env → SSM SecureString へ登録して Lambda 参照）。connpass/duolingo と同じ LINE に混在するのは許容。
+- 2026-07-08: Phase 1.5 のスコープを確定（spec.md §9）。設定画面は Web でなく LINE 内完結（署名検証 + userId 照合の webhook）、フィルタはルール→Nova 分類の二段構え、カテゴリは SSM 上の動的リスト、「いらない」フィードバック収集 → 集計 → LLM 新カテゴリ提案（人間承認制）の学習ループまで全部入り。
+- 2026-07-08: 配信単位を「まとめ」から 1 記事 = 1 Flex カードに変更（てつてつ提案）。Phase 2 の記事ごと説明画像生成に hero 画像スロットで直結する器。LINE の課金通数は宛先人数単位で 1 リクエスト内のメッセージオブジェクト数（最大5）は不算入と公式 Docs で確認済みのため、5 記事/リクエストのバッチで無料枠 200 通/月に収まる。
 
 ## 学習済み概念（理解度テスト正解済み・次回スキップ可）
+- 2026-07-08: webhook 署名検証 = HTTPS が守るのは「通信の途中」、署名が守るのは「送信者が本物か」。channel secret を鍵にした本文 HMAC-SHA256（X-Line-Signature）は secret を知らない第三者には偽造できないため、Function URL が authType=NONE でも偽リクエストを弾ける。
+- 2026-07-08: SSM 動的設定 vs 環境変数 = 環境変数は関数定義の一部なので変更にデプロイ相当の関数更新が要る。SSM なら実行時に読むため PutParameter した瞬間に反映され、複数 Lambda で同じ設定を共有できる。Standard パラメータは保存も標準 API も無料（Advanced のみ月 $0.05/個）。
+- 2026-07-08: LLM の Judge / Generator 分担 = 分類（Judge）は同じ入力に同じ判定を返す再現性が信頼の源で temperature=0。提案（Generator）は発想の幅が価値なので揺らぎ許容。
 - 2026-07-04: IAM ロールの分離 = 「呼ぶ側」と「呼ばれる側」は別主体。Scheduler が Lambda を起動する権限は scheduler.amazonaws.com が assume する専用ロールに持たせる（Lambda 実行ロールとは別物）。
 - 2026-07-04: SecureString の復号 = AWS 管理キー（aws/ssm）はキーポリシーが SSM 経由の利用をアカウント内に許可済みのため、呼び出し側は ssm:GetParameter だけでよい。カスタマー管理キーなら kms:Decrypt が必要。
 - 2026-07-04: 本スタックの固定費 = ほぼゼロ（DynamoDB オンデマンド/Lambda/Scheduler 無料枠/SSM Standard すべて従量・無料。課金は Bedrock 要約の従量分のみ）。

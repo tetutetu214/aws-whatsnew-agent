@@ -1,5 +1,12 @@
 # todo.md — aws-whatsnew-agent
 
+## Phase 1.5: カテゴリフィルタ + LINE 設定・フィードバック（2026-07-08 起票、同日「集計ループまで全部入り」でスコープ確定、spec.md §9）
+- [x] スコープ確定: LINE 内で設定操作 / ルール+LLM 二段判定 / 「いらない」ボタンのみ / 集計・カテゴリ追加削除・LLM 提案まで全部入り（てつてつ回答済み）
+- [ ] 実装（Codex 委譲予定）: フィルタ二段判定（rules + Nova 分類）/ 動的カテゴリ（SSM filter/config）/ EXCLUDE_SERVICES 廃止 / 配信 Flex 化（1記事=1カード、5記事/リクエスト）+ 「いらない」ボタン / SettingsWebhook Lambda + Function URL（設定・集計・追加削除・提案）/ CDK 更新 / テスト
+- [ ] 検収（Claude）: pytest + cdk synth、直近 RSS 実データでルール網羅率確認
+- [ ] デプロイ（要 aws login）: channel_secret を SSM 登録 → cdk deploy → LINE コンソールに Webhook URL 設定
+- [ ] 実機確認: 「設定」→トグル操作、「いらない」タップ→「集計」反映、翌朝配信でフィルタ効果を観測
+
 ## 進行中（運用観測フェーズ）
 - [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）— 7/7(火) 朝から実配信データが DynamoDB に summary 付きで貯まる。初サンプル1件では敬体/常体の混在あり（knowledge.md 実測メモ参照）。数日分貯まったら品質判定
 
