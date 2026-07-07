@@ -54,7 +54,7 @@
   - スケジュール: `cron(0 7 * * ? *)`、タイムゾーン `Asia/Tokyo`。
 - Lambda 実行ロール（最小権限）:
   - `bedrock:InvokeModel`（対象 Nova モデル ARN に限定）
-  - `dynamodb:GetItem` / `PutItem` / `BatchGetItem`（対象テーブルに限定）
+  - `dynamodb:GetItem` / `PutItem`（対象テーブルに限定。BatchGetItem は未使用のため PR #1 で削除済み）
   - `ssm:GetParameter`（LINE トークンのパラメータに限定, WithDecryption）
   - CloudWatch Logs 書き込み（基本ロール）
 - シークレット:
