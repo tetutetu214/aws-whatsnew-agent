@@ -91,7 +91,7 @@
 - ユーザー定義カテゴリはトークから追加・削除できる（§9.5）。判定は `description` を LLM プロンプトに動的に埋め込んで行う。
 
 ### 9.2 フィルタ判定（ルール → LLM の二段構え）
-1. **一段目（ルール）**: builtin カテゴリのみ定型句 regex リスト（コード内定数、タイトル対象）。例: `region_expansion` = `/(now\s+)?available in .*Regions?/i`, `/additional (AWS )?Regions?/i` など。ヒットしたらカテゴリ確定し LLM は呼ばない。実装時に直近 RSS 実データで網羅率を確認して調整。
+1. **一段目（ルール）**: builtin カテゴリのみ定型句 regex リスト（コード内定数、タイトル対象）。例: `region_expansion` = `/available .*Regions?/i`, `/additional (AWS )?Regions?/i` など。ヒットしたらカテゴリ確定し LLM は呼ばない。2026-07-08 に直近 RSS 100 件で実測: region_expansion 15 件をルール確定・誤爆ゼロ（当初案の `/in .* regions?/i` は機能追加記事に誤爆したため available を必須化）。
 2. **二段目（LLM）**: ルールで確定しなかった記事のみ、Nova Micro（`converse`, temperature=0, maxTokens 最小）に「enabled なカテゴリ一覧（id + description）+ `other`」から 1 語選ばせる。Judge 役なので出力の揺らぎを排除（enum 外の応答・API 失敗時は安全側 = `other` として配信。重要発表の取りこぼしをフィルタ誤動作より優先して防ぐ）。
 - 判定の実行位置: 未送信判定（DynamoDB）の後・**要約の前**。除外記事の要約コストを払わない。
 - 除外した記事は DynamoDB に `status=filtered` + `category` を記録し、翌日以降の再分類・再送信を防ぐ。
@@ -122,7 +122,8 @@
   - **「提案」** → §9.6 の新カテゴリ提案
   - それ以外のメッセージには応答しない（共有チャネルのため誤爆防止）
 - 返信は reply token を使う **Reply API**（Push と違い無料メッセージ数を消費しない）。
-- IAM（webhook Lambda, 最小権限）: `ssm:GetParameter`（channel_secret / user_id / filter/config）、`ssm:PutParameter`（filter/config **のみ**）、`dynamodb:GetItem` / `UpdateItem` / `Scan`（対象テーブル限定）、`bedrock:InvokeModel`（Nova 限定。カテゴリ整形と §9.6 で使用）。
+- IAM（webhook Lambda, 最小権限）: `ssm:GetParameter`（channel_secret / user_id / channel_token / filter/config。token は Reply API 送信に必要 = 2026-07-08 実装時に追加）、`ssm:PutParameter`（filter/config **のみ**）、`dynamodb:GetItem` / `UpdateItem` / `Scan`（対象テーブル限定）、`bedrock:InvokeModel`（Nova 限定。カテゴリ整形と §9.6 で使用）。
+- webhook はイベント処理が失敗しても **200 を返す**（500 だと LINE が再送し、設定トグル等が二重適用されるため。失敗は CloudWatch ログに残す）。
 - **共有チャネルの制約**: line-notify チャネルは connpass / duolingo と共有。webhook URL はチャネルに 1 つしか設定できないため、このチャネルの webhook はここが専有する。既存 2 つは Push 専用（webhook 不使用）なので影響なし。将来他プロジェクトが webhook を使いたくなったら、この Lambda をルーターにするかチャネル分離を検討。
 
 ### 9.6 新カテゴリの自動提案（学習ループ）

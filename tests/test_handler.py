@@ -1,6 +1,7 @@
 from src.config import Config
+from src.filter_config import DEFAULT_FILTER_CONFIG
 from src.handler import run_pipeline
-from src.line import MessageChunk
+from src.line import FlexMessage
 from src.rss import Article
 
 
@@ -9,6 +10,8 @@ class RecordingStore:
         self.unsent_ids = unsent_ids
         self.seeded: list[str] = []
         self.sent: list[str] = []
+        self.filtered: dict[str, str] = {}
+        self.feedback_mappings: dict[str, str] = {}
         # article_id をキーに mark_sent へ渡された要約・モデルIDを記録する。
         self.sent_summaries: dict[str, str] = {}
         self.sent_model_ids: dict[str, str] = {}
@@ -24,10 +27,22 @@ class RecordingStore:
         self.sent_summaries[article.article_id] = summary
         self.sent_model_ids[article.article_id] = model_id
 
+    def mark_filtered(self, article: Article, category: str) -> None:
+        self.filtered[article.article_id] = category
+
+    def save_feedback_mapping(
+        self,
+        short_id: str,
+        article: Article,
+        category: str,
+    ) -> None:
+        del category
+        self.feedback_mappings[short_id] = article.article_id
+
 
 def test_seed_mode_trueでは送信せずseeded記録だけ行う() -> None:
     store = RecordingStore({"article-1", "article-2"})
-    send_calls: list[list[MessageChunk]] = []
+    send_calls: list[list[FlexMessage]] = []
 
     result = run_pipeline(
         app_config=_config(seed_mode=True),
@@ -51,6 +66,7 @@ def test_seed_mode_falseでは未送信の記事だけ送信済みに記録す�
         article_store=store,
         fetch_articles_func=lambda url: _articles(),
         summarize_func=lambda article, model_id: f"要約: {article.title}",
+        classify_func=lambda article, config, model_id, bedrock_client=None: "other",
         send_chunks_func=lambda user_id, token, chunks: {"article-2"},
         ssm_client=FakeSsmClient(),
     )
@@ -68,6 +84,7 @@ def test_送信成功した記事にはその記事の要約とモデルIDが記
         article_store=store,
         fetch_articles_func=lambda url: _articles(),
         summarize_func=lambda article, model_id: f"要約: {article.title}",
+        classify_func=lambda article, config, model_id, bedrock_client=None: "other",
         send_chunks_func=lambda user_id, token, chunks: {"article-2"},
         ssm_client=FakeSsmClient(),
     )
@@ -84,12 +101,52 @@ def test_複数記事が送信成功しても要約が記事ごとに正しく�
         article_store=store,
         fetch_articles_func=lambda url: _articles(),
         summarize_func=lambda article, model_id: f"要約: {article.title}",
+        classify_func=lambda article, config, model_id, bedrock_client=None: "other",
         send_chunks_func=lambda user_id, token, chunks: {"article-1", "article-2"},
         ssm_client=FakeSsmClient(),
     )
 
     assert store.sent_summaries["article-1"] == "要約: title 1"
     assert store.sent_summaries["article-2"] == "要約: title 2"
+
+
+def test_分類で除外された記事は要約せずfiltered記録だけ行う() -> None:
+    store = RecordingStore({"article-1", "article-2"})
+    summarized: list[str] = []
+
+    result = run_pipeline(
+        app_config=_config(seed_mode=False),
+        article_store=store,
+        fetch_articles_func=lambda url: _articles(),
+        summarize_func=lambda article, model_id: _record_summary(article, summarized),
+        classify_func=(
+            lambda article, config, model_id, bedrock_client=None:
+            "region_expansion" if article.article_id == "article-1" else "other"
+        ),
+        send_chunks_func=lambda user_id, token, chunks: {"article-2"},
+        ssm_client=FakeSsmClient(),
+    )
+
+    assert result["filtered"] == 1
+    assert store.filtered == {"article-1": "region_expansion"}
+    assert summarized == ["article-2"]
+    assert store.sent == ["article-2"]
+
+
+def test_Flex送信時にfeedback対応レコードを保存する() -> None:
+    store = RecordingStore({"article-2"})
+
+    run_pipeline(
+        app_config=_config(seed_mode=False),
+        article_store=store,
+        fetch_articles_func=lambda url: _articles(),
+        summarize_func=lambda article, model_id: f"要約: {article.title}",
+        classify_func=lambda article, config, model_id, bedrock_client=None: "other",
+        send_chunks_func=lambda user_id, token, chunks: {"article-2"},
+        ssm_client=FakeSsmClient(),
+    )
+
+    assert list(store.feedback_mappings.values()) == ["article-2"]
 
 
 class FakeSsmClient:
@@ -102,8 +159,14 @@ class FakeSsmClient:
         values = {
             "/token": "token-value",
             "/user": "user-value",
+            "/filter": DEFAULT_FILTER_CONFIG,
         }
-        return {"Parameter": {"Value": values[Name]}}
+        value = values[Name]
+        if not isinstance(value, str):
+            from src.filter_config import to_json
+
+            value = to_json(value)
+        return {"Parameter": {"Value": value}}
 
 
 def _config(seed_mode: bool) -> Config:
@@ -112,10 +175,9 @@ def _config(seed_mode: bool) -> Config:
         bedrock_model_id="amazon.nova-micro-v1:0",
         line_token_param="/token",
         line_user_id_param="/user",
+        filter_config_param="/filter",
         seed_mode=seed_mode,
-        exclude_services=(),
         rss_url="https://example.com/rss",
-        max_articles_per_message=10,
     )
 
 
@@ -136,3 +198,8 @@ def _articles() -> list[Article]:
             published="Mon, 06 Jul 2026 01:00:00 GMT",
         ),
     ]
+
+
+def _record_summary(article: Article, summarized: list[str]) -> str:
+    summarized.append(article.article_id)
+    return f"要約: {article.title}"

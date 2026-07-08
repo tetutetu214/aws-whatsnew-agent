@@ -17,6 +17,8 @@
 - 2026-07-08: webhook 署名検証 = HTTPS が守るのは「通信の途中」、署名が守るのは「送信者が本物か」。channel secret を鍵にした本文 HMAC-SHA256（X-Line-Signature）は secret を知らない第三者には偽造できないため、Function URL が authType=NONE でも偽リクエストを弾ける。
 - 2026-07-08: SSM 動的設定 vs 環境変数 = 環境変数は関数定義の一部なので変更にデプロイ相当の関数更新が要る。SSM なら実行時に読むため PutParameter した瞬間に反映され、複数 Lambda で同じ設定を共有できる。Standard パラメータは保存も標準 API も無料（Advanced のみ月 $0.05/個）。
 - 2026-07-08: LLM の Judge / Generator 分担 = 分類（Judge）は同じ入力に同じ判定を返す再現性が信頼の源で temperature=0。提案（Generator）は発想の幅が価値なので揺らぎ許容。
+- 2026-07-08: webhook の 200 固定 = 500 を返すと LINE が再送し、トグルのような非冪等操作が二重適用される。失敗はログに残して監査。
+- 2026-07-08: DynamoDB Scan の 1MB 打ち切り = エラーにならず途中まで返る（LastEvaluatedKey が付くだけ）。全件集計はループ必須。
 - 2026-07-04: IAM ロールの分離 = 「呼ぶ側」と「呼ばれる側」は別主体。Scheduler が Lambda を起動する権限は scheduler.amazonaws.com が assume する専用ロールに持たせる（Lambda 実行ロールとは別物）。
 - 2026-07-04: SecureString の復号 = AWS 管理キー（aws/ssm）はキーポリシーが SSM 経由の利用をアカウント内に許可済みのため、呼び出し側は ssm:GetParameter だけでよい。カスタマー管理キーなら kms:Decrypt が必要。
 - 2026-07-04: 本スタックの固定費 = ほぼゼロ（DynamoDB オンデマンド/Lambda/Scheduler 無料枠/SSM Standard すべて従量・無料。課金は Bedrock 要約の従量分のみ）。
@@ -31,6 +33,11 @@
 - 2026-07-06: us-east-1 の Nova 可用性を確認。`amazon.nova-lite-v1:0` と `amazon.nova-micro-v1:0` は ON_DEMAND 対応（推論プロファイル不要で Converse 直呼び出し可）。`amazon.nova-2-lite-v1:0` は INFERENCE_PROFILE 必須。短い日本語要約なので Nova Micro を第一候補、品質不足なら Lite に上げる。
 
 ## 知見 / ハマり
+- 2026-07-08: **フィルタ regex の `\bin .* regions?\b` は機能追加記事に誤爆する**。「... on 26 additional EC2 instance types in all commercial regions」のような記事が region_expansion 扱いになり、除外はユーザーに見えないため無音で欠落する。展開表現（available 等）を必須にして解決。除外記事は CloudWatch ログに必ず残す（誤爆の監査経路）。
+- 2026-07-08: **LINE webhook は失敗時も 200 を返す**。500 を返すと LINE Platform が再送し、設定トグルのような非冪等操作が二重適用される。イベント単位で例外を捕捉しログへ。
+- 2026-07-08: **DynamoDB Scan は 1MB で打ち切られる**。集計用の全件 Scan は LastEvaluatedKey ループ必須（sent レコードは summary 込みで 1 件 ~1KB、90 日分で 1MB を超えうる）。
+- 2026-07-08: **Codex サンドボックスには pytest が無い**。「py_compile と import 確認のみ」の報告を「テスト済み」と読み違えない。検収側での pytest 実行が必須（今回 60 件は全て検収側で初実行）。
+- 2026-07-08: Codex バックグラウンドタスクの完了確認は `codex-companion.mjs status <task-id>` の直叩きが確実（監視サブエージェントのポーリング委譲は完了検知に失敗して 50 分空回りした）。
 - 2026-07-04: **SSM パラメータ名は `aws` / `ssm` で始まる名前が予約されていて登録不可**（AccessDeniedException: No access to reserved parameter name）。プロジェクト名が aws- で始まる場合はそのままパラメータ名に使えない。`/aws-whatsnew-agent/...` → `/whatsnew-agent/...` に変更（PR #2）。
 - 2026-07-04: `aws lambda update-function-configuration --environment` は**環境変数の全置換**（マージではない）。既存の全変数を含む `{"Variables": {...}}` 形式の JSON を渡す。get-function-configuration で取得した Variables マップをそのまま渡すとラッパー不足で ParamValidation エラー。
 - 2026-07-04: 疎通確認の手法 = 全件既読の状態で DynamoDB から1件 delete-item → 本番モードで invoke すると「人工新着1件」で要約→LINE Push の全経路を検証できる。レコードは送信成功時に mark_sent で自動再作成されるため後始末不要。

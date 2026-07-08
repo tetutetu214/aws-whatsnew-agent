@@ -1,12 +1,12 @@
 import json
-from datetime import UTC, datetime
 from urllib import request
 
 from src.line import (
     LINE_MESSAGES_PER_REQUEST,
     ArticleSummary,
-    MessageChunk,
-    build_message_chunks,
+    FlexMessage,
+    build_flex_messages,
+    build_short_id,
     send_message_chunks,
 )
 from src.rss import Article
@@ -32,51 +32,39 @@ class RecordingOpener:
         return FakeResponse()
 
 
-def test_11件の記事は既定10件ごとに2チャンクへ分割される() -> None:
-    summaries = [_summary(index) for index in range(11)]
+def test_記事ごとにFlexメッセージを作る() -> None:
+    messages = build_flex_messages([_summary(1)])
 
-    chunks = build_message_chunks(
-        summaries,
-        max_articles_per_message=10,
-        now=datetime(2026, 7, 6, tzinfo=UTC),
-    )
-
-    assert len(chunks) == 2
-    assert len(chunks[0].article_ids) == 10
-    assert len(chunks[1].article_ids) == 1
+    message = messages[0].message
+    assert message["type"] == "flex"
+    assert message["contents"]["type"] == "bubble"
+    assert messages[0].article_ids == ("article-1",)
 
 
-def test_5000文字を超える本文は複数チャンクへ分割される() -> None:
-    summaries = [
-        _summary(1, summary="a" * 3000),
-        _summary(2, summary="b" * 3000),
-    ]
+def test_short_idはarticle_idのSHA256先頭12桁になる() -> None:
+    messages = build_flex_messages([_summary(1)])
 
-    chunks = build_message_chunks(
-        summaries,
-        max_articles_per_message=10,
-        now=datetime(2026, 7, 6, tzinfo=UTC),
-    )
-
-    assert len(chunks) == 2
-    assert all(len(chunk.text) <= 5000 for chunk in chunks)
+    assert messages[0].short_id == build_short_id("article-1")
+    assert len(messages[0].short_id) == 12
 
 
-def test_ヘッダー日付はUTC実行環境でもJSTの日付になる() -> None:
-    # 毎朝7時JST の実行は UTC では前日22時。Lambda(UTC) でも JST の日付が出ること。
-    summaries = [_summary(1)]
+def test_いらないボタンはshort_idをpostback_dataに含める() -> None:
+    messages = build_flex_messages([_summary(1)])
 
-    chunks = build_message_chunks(
-        summaries,
-        now=datetime(2026, 7, 5, 22, 0, tzinfo=UTC),
-    )
+    footer = messages[0].message["contents"]["footer"]["contents"]
+    dislike_button = footer[1]["action"]
 
-    assert chunks[0].text.startswith("AWS What's New 2026-07-06")
+    assert dislike_button["type"] == "postback"
+    assert dislike_button["data"] == f"action=dislike&sid={messages[0].short_id}"
 
 
 def test_push送信は5メッセージごとにリクエストを分割する() -> None:
     chunks = [
-        MessageChunk(text=f"message {index}", article_ids=(f"id-{index}",))
+        FlexMessage(
+            message={"type": "text", "text": f"message {index}"},
+            article_ids=(f"id-{index}",),
+            short_id=f"short-{index}",
+        )
         for index in range(LINE_MESSAGES_PER_REQUEST + 1)
     ]
     opener = RecordingOpener()
