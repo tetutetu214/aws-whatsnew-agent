@@ -19,6 +19,7 @@
 - 2026-07-08: LLM の Judge / Generator 分担 = 分類（Judge）は同じ入力に同じ判定を返す再現性が信頼の源で temperature=0。提案（Generator）は発想の幅が価値なので揺らぎ許容。
 - 2026-07-08: webhook の 200 固定 = 500 を返すと LINE が再送し、トグルのような非冪等操作が二重適用される。失敗はログに残して監査。
 - 2026-07-08: DynamoDB Scan の 1MB 打ち切り = エラーにならず途中まで返る（LastEvaluatedKey が付くだけ）。全件集計はループ必須。
+- 2026-07-08: 公開 Function URL の安全性は「URL を LINE に設定したかどうか」と無関係 = 署名検証がある限り設定前後で危険度は変わらない。webhook 誤動作時の最速の止め方は AWS を触らず LINE 側の「Webhookの利用」を OFF（配信 Lambda に影響しない）。
 - 2026-07-04: IAM ロールの分離 = 「呼ぶ側」と「呼ばれる側」は別主体。Scheduler が Lambda を起動する権限は scheduler.amazonaws.com が assume する専用ロールに持たせる（Lambda 実行ロールとは別物）。
 - 2026-07-04: SecureString の復号 = AWS 管理キー（aws/ssm）はキーポリシーが SSM 経由の利用をアカウント内に許可済みのため、呼び出し側は ssm:GetParameter だけでよい。カスタマー管理キーなら kms:Decrypt が必要。
 - 2026-07-04: 本スタックの固定費 = ほぼゼロ（DynamoDB オンデマンド/Lambda/Scheduler 無料枠/SSM Standard すべて従量・無料。課金は Bedrock 要約の従量分のみ）。

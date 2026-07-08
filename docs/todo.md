@@ -4,7 +4,10 @@
 - [x] スコープ確定: LINE 内で設定操作 / ルール+LLM 二段判定 / 「いらない」ボタンのみ / 集計・カテゴリ追加削除・LLM 提案まで全部入り（てつてつ回答済み）
 - [x] 2026-07-08 実装（Codex gpt-5.5 委譲、11分で完了）: フィルタ二段判定 / 動的カテゴリ / EXCLUDE_SERVICES 廃止 / 配信 Flex 化（1記事=1カード）+ 「いらない」ボタン / SettingsWebhook Lambda + Function URL / CDK 更新 / テスト
 - [x] 2026-07-08 検収（Fable レビューで 5 件修正）: ①regex `in .* regions` の誤爆を available 必須化で修正（実 RSS 100件で region 15件確定・誤爆ゼロを実測）②worker の不要な dynamodb:UpdateItem 削除 ③webhook 例外時も 200 返却（LINE 再送での二重適用防止）④Scan の 1MB ページネーション追加 ⑤除外記事のログ追加。pytest 60件パス / cdk synth 成功。Codex サンドボックスに pytest が無くテスト未実行だった点も検収側で吸収
-- [ ] デプロイ（要 aws login）: channel_secret を SSM 登録 → cdk deploy → LINE コンソールに Webhook URL 設定
+- [x] 2026-07-08 PR #5 マージ（gh api 直叩き）・ブランチ掃除
+- [x] 2026-07-08 デプロイ: channel_secret を SSM SecureString 登録（Version 1）→ cdk deploy 成功（82秒、SettingsWebhook 一式 + PR #4 のアラート基盤 + worker 更新）→ 署名なし/偽署名 POST が本番で 403 になることを実証
+- [ ] LINE Developers コンソールで Webhook URL 設定 + 「Webhookの利用」ON（てつてつ手動）
+- [ ] SNS 購読確認メール（AWS Notifications）の Confirm をクリック（てつてつ手動）
 - [ ] 実機確認: 「設定」→トグル操作、「いらない」タップ→「集計」反映、翌朝配信でフィルタ効果を観測
 
 ## 進行中（運用観測フェーズ）
