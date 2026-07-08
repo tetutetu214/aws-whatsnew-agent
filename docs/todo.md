@@ -6,9 +6,10 @@
 - [x] 2026-07-08 検収（Fable レビューで 5 件修正）: ①regex `in .* regions` の誤爆を available 必須化で修正（実 RSS 100件で region 15件確定・誤爆ゼロを実測）②worker の不要な dynamodb:UpdateItem 削除 ③webhook 例外時も 200 返却（LINE 再送での二重適用防止）④Scan の 1MB ページネーション追加 ⑤除外記事のログ追加。pytest 60件パス / cdk synth 成功。Codex サンドボックスに pytest が無くテスト未実行だった点も検収側で吸収
 - [x] 2026-07-08 PR #5 マージ（gh api 直叩き）・ブランチ掃除
 - [x] 2026-07-08 デプロイ: channel_secret を SSM SecureString 登録（Version 1）→ cdk deploy 成功（82秒、SettingsWebhook 一式 + PR #4 のアラート基盤 + worker 更新）→ 署名なし/偽署名 POST が本番で 403 になることを実証
-- [ ] LINE Developers コンソールで Webhook URL 設定 + 「Webhookの利用」ON（てつてつ手動）
-- [ ] SNS 購読確認メール（AWS Notifications）の Confirm をクリック（てつてつ手動）
-- [ ] 実機確認: 「設定」→トグル操作、「いらない」タップ→「集計」反映、翌朝配信でフィルタ効果を観測
+- [x] 2026-07-08 LINE コンソール設定: Webhook URL 検証成功（コールドスタート約3秒で初回タイムアウト → ウォーム時に成功）。「Webhookの利用」ON 漏れで無反応事件のあと解決し、設定メニューの実機受信を確認。コールドスタート対策（メモリ増量等）は「実害が出たら」で見送り（てつてつ判断）
+- [ ] SNS 購読確認メール（AWS Notifications）の Confirm をクリック（てつてつ手動・未確認）
+- [ ] 翌朝配信の観測（7/9 朝7時〜）: ①1記事=1カード形式で届くか ②リージョン拡大/サイズ追加が消えているか（CloudWatch「Filtered as」ログと DynamoDB status=filtered で照合）③「いらない」タップ→「記録しました」返信が返るか ④トグル操作の返信が返るか（7/8 15:44 に reply の HTTPError×4 が未解明のまま。再送の期限切れ token 説。再発するなら reply エラーのステータスコードをログに出す改修を入れる）
+- [ ] 設定メニューの文言改善の要否判断: 「ON リージョン拡大」では何のONか分からないとフィードバックあり。「🚫除外中: 〜」等への変更は配信カードを実際に見てから判断（観測駆動）
 
 ## 進行中（運用観測フェーズ）
 - [ ] 要約モデルの実測（Nova Micro で開始、日本語品質不足なら Lite / Claude）— 7/7(火) 朝から実配信データが DynamoDB に summary 付きで貯まる。初サンプル1件では敬体/常体の混在あり（knowledge.md 実測メモ参照）。数日分貯まったら品質判定
