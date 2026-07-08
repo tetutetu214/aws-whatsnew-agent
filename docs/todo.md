@@ -11,7 +11,9 @@
 - [x] 2026-07-08 16:30 初実戦（てつてつ提案で手動 invoke を前倒し）: 朝7時以降の自然新着 8 件に対し sent=5 / filtered=3。除外3件は全て region_expansion で誤爆ゼロ（S3 Vectors GovCloud / Redshift RG GovCloud / S3 Express One Zone Frankfurt）。カード配信も到達
 - [x] 2026-07-08 LINE チャネル専用化: AWS WhatsNew チャネル新設（てつてつ）→ SSM token/secret 差し替え（Version 2、正本 ~/.secrets/aws-whatsnew-line.env）→ 新チャネルで疎通 push・新 secret 署名 200 確認 → webhook を新チャネルへ移設・旧チャネル OFF。旧トークの配信済みカードのボタンは無効化（knowledge.md 参照）
 - [x] 2026-07-08 ボタン文言変更（PR #6）: 「いらない」→「Not for Me」（サービス否定に読める問題）。集計表示も追随。pytest 60件パス → deploy → 今日の5件を新トークに再送済み
-- [ ] 実機の残り観測: ①Not for Me タップ→「記録しました」返信と DynamoDB 記録 ②トグル操作の返信（7/8 15:44 の reply HTTPError×4 が未解明。再送の期限切れ token 説。再発するなら reply エラーのステータスコードをログに出す改修）③「集計」の反映 ④7/9 朝7時の定期実行が新チャネルに届くか
+- [x] 2026-07-08 17:12 フィードバック経路の実機確認: 新チャネルの webhook 設定後、RDS for Oracle 記事への Not for Me タップが webhook 着信（1.0秒・エラーなし）→ DynamoDB feedback=dislike 記録 → 「記録しました」返信まで全通。15:44 の reply HTTPError×4 は「チャネル切り替え期の期限切れ token による一過性」で確定（新チャネルの新規イベントでは再発せず）
+- [ ] 実機の残り観測: ①「集計」で Not for Me 総数:1 と RDS 記事が出るか ②設定メニューのトグル操作 ③7/9 朝7時の定期実行が新チャネルに届くか ④「提案」はフィードバックが数件貯まってから
+- [ ] SNS 購読確認メール（AWS Notifications）の Confirm クリック（てつてつ手動・まだなら）
 - [ ] 設定メニューの文言改善の要否判断: 「ON リージョン拡大」では何のONか分からないとフィードバックあり。「🚫除外中: 〜」等への変更は配信カードを実際に見てから判断（観測駆動）
 
 ## 進行中（運用観測フェーズ）
