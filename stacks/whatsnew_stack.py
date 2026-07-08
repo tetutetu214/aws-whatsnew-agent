@@ -1,6 +1,6 @@
 import os
 
-from aws_cdk import Duration, RemovalPolicy, Stack
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
 from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
 from aws_cdk import aws_dynamodb as dynamodb
@@ -36,6 +36,8 @@ class WhatsNewStack(Stack):
 
         line_token_param = "/whatsnew-agent/line/channel_token"
         line_user_id_param = "/whatsnew-agent/line/user_id"
+        line_channel_secret_param = "/whatsnew-agent/line/channel_secret"
+        filter_config_param = "/whatsnew-agent/filter/config"
 
         worker = lambda_.Function(
             self,
@@ -50,11 +52,36 @@ class WhatsNewStack(Stack):
                 "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0",
                 "LINE_TOKEN_PARAM": line_token_param,
                 "LINE_USER_ID_PARAM": line_user_id_param,
+                "FILTER_CONFIG_PARAM": filter_config_param,
                 "SEED_MODE": "false",
                 "RSS_URL": "https://aws.amazon.com/about-aws/whats-new/recent/feed/",
-                "MAX_ARTICLES_PER_MESSAGE": "10",
-                "EXCLUDE_SERVICES": "",
             },
+        )
+
+        webhook = lambda_.Function(
+            self,
+            "SettingsWebhook",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="webhook.lambda_handler",
+            code=lambda_.Code.from_asset("src"),
+            timeout=Duration.seconds(60),
+            memory_size=256,
+            environment={
+                "TABLE_NAME": table.table_name,
+                "BEDROCK_MODEL_ID": "amazon.nova-micro-v1:0",
+                "LINE_TOKEN_PARAM": line_token_param,
+                "LINE_USER_ID_PARAM": line_user_id_param,
+                "LINE_CHANNEL_SECRET_PARAM": line_channel_secret_param,
+                "FILTER_CONFIG_PARAM": filter_config_param,
+            },
+        )
+        webhook_url = webhook.add_function_url(
+            auth_type=lambda_.FunctionUrlAuthType.NONE,
+        )
+        CfnOutput(
+            self,
+            "SettingsWebhookUrl",
+            value=webhook_url.url,
         )
 
         worker.add_to_role_policy(
@@ -87,6 +114,68 @@ class WhatsNewStack(Stack):
                         service="ssm",
                         resource="parameter",
                         resource_name=line_user_id_param.lstrip("/"),
+                    ),
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=filter_config_param.lstrip("/"),
+                    ),
+                ],
+            )
+        )
+        webhook.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "dynamodb:GetItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:Scan",
+                ],
+                resources=[table.table_arn],
+            )
+        )
+        webhook.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    f"arn:aws:bedrock:{self.region}::foundation-model/amazon.nova-*"
+                ],
+            )
+        )
+        webhook.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["ssm:GetParameter"],
+                resources=[
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=line_channel_secret_param.lstrip("/"),
+                    ),
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=line_user_id_param.lstrip("/"),
+                    ),
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=line_token_param.lstrip("/"),
+                    ),
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=filter_config_param.lstrip("/"),
+                    ),
+                ],
+            )
+        )
+        webhook.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["ssm:PutParameter"],
+                resources=[
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=filter_config_param.lstrip("/"),
                     ),
                 ],
             )

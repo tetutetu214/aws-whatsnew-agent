@@ -2,9 +2,11 @@ from typing import Any
 import logging
 
 try:
-    from . import config, line, rss, store, summarize
+    from . import classify, config, filter_config, line, rss, store, summarize
 except ImportError:
+    import classify
     import config
+    import filter_config
     import line
     import rss
     import store
@@ -26,7 +28,9 @@ def run_pipeline(
     fetch_articles_func: Any | None = None,
     summarize_func: Any | None = None,
     send_chunks_func: Any | None = None,
+    classify_func: Any | None = None,
     ssm_client: Any | None = None,
+    bedrock_client: Any | None = None,
 ) -> dict[str, Any]:
     app_config = app_config or config.load_config()
     article_store = article_store or store.SentArticleStore(
@@ -36,12 +40,12 @@ def run_pipeline(
     fetch_articles_func = fetch_articles_func or rss.fetch_articles
     summarize_func = summarize_func or summarize.summarize_article
     send_chunks_func = send_chunks_func or line.send_message_chunks
+    classify_func = classify_func or classify.classify_article
 
     articles = fetch_articles_func(app_config.rss_url)
-    filtered_articles = _filter_articles(articles, app_config.exclude_services)
     target_articles = [
         article
-        for article in filtered_articles
+        for article in articles
         if article_store.is_unsent(article.article_id)
     ]
     LOGGER.info("Found %s unsent articles", len(target_articles))
@@ -62,19 +66,56 @@ def run_pipeline(
             "target": 0,
             "seeded": 0,
             "sent": 0,
+            "filtered": 0,
+        }
+
+    current_filter_config = filter_config.load_filter_config(
+        app_config.filter_config_param,
+        ssm_client=ssm_client,
+    )
+    deliverable_articles: list[tuple[rss.Article, str]] = []
+    filtered_count = 0
+    for article in target_articles:
+        category = classify_func(
+            article,
+            current_filter_config,
+            app_config.bedrock_model_id,
+            bedrock_client=bedrock_client,
+        )
+        if category != classify.OTHER_CATEGORY:
+            # 除外はユーザーに見えないため、誤爆を後から監査できるようログに残す
+            LOGGER.info("Filtered as %s: %s", category, article.title)
+            article_store.mark_filtered(article, category)
+            filtered_count += 1
+            continue
+        deliverable_articles.append((article, category))
+
+    if not deliverable_articles:
+        return {
+            "fetched": len(articles),
+            "target": len(target_articles),
+            "seeded": 0,
+            "sent": 0,
+            "filtered": filtered_count,
         }
 
     article_summaries = [
         line.ArticleSummary(
             article=article,
             summary=summarize_func(article, app_config.bedrock_model_id),
+            category=category,
         )
-        for article in target_articles
+        for article, category in deliverable_articles
     ]
-    chunks = line.build_message_chunks(
-        article_summaries,
-        max_articles_per_message=app_config.max_articles_per_message,
-    )
+    chunks = line.build_flex_messages(article_summaries)
+    for item in chunks:
+        article = next(
+            summary.article
+            for summary in article_summaries
+            if summary.article.article_id == item.article_ids[0]
+        )
+        article_store.save_feedback_mapping(item.short_id, article, "other")
+
     token, user_id = _load_line_secrets(
         app_config.line_token_param,
         app_config.line_user_id_param,
@@ -102,23 +143,8 @@ def run_pipeline(
         "target": len(target_articles),
         "seeded": 0,
         "sent": sent_count,
+        "filtered": filtered_count,
     }
-
-
-def _filter_articles(
-    articles: list[rss.Article],
-    exclude_services: tuple[str, ...],
-) -> list[rss.Article]:
-    if not exclude_services:
-        return articles
-
-    filtered = []
-    for article in articles:
-        combined_text = f"{article.title} {article.description}".lower()
-        if any(service.lower() in combined_text for service in exclude_services):
-            continue
-        filtered.append(article)
-    return filtered
 
 
 def _load_line_secrets(

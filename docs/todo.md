@@ -2,8 +2,8 @@
 
 ## Phase 1.5: カテゴリフィルタ + LINE 設定・フィードバック（2026-07-08 起票、同日「集計ループまで全部入り」でスコープ確定、spec.md §9）
 - [x] スコープ確定: LINE 内で設定操作 / ルール+LLM 二段判定 / 「いらない」ボタンのみ / 集計・カテゴリ追加削除・LLM 提案まで全部入り（てつてつ回答済み）
-- [ ] 実装（Codex 委譲予定）: フィルタ二段判定（rules + Nova 分類）/ 動的カテゴリ（SSM filter/config）/ EXCLUDE_SERVICES 廃止 / 配信 Flex 化（1記事=1カード、5記事/リクエスト）+ 「いらない」ボタン / SettingsWebhook Lambda + Function URL（設定・集計・追加削除・提案）/ CDK 更新 / テスト
-- [ ] 検収（Claude）: pytest + cdk synth、直近 RSS 実データでルール網羅率確認
+- [x] 2026-07-08 実装（Codex gpt-5.5 委譲、11分で完了）: フィルタ二段判定 / 動的カテゴリ / EXCLUDE_SERVICES 廃止 / 配信 Flex 化（1記事=1カード）+ 「いらない」ボタン / SettingsWebhook Lambda + Function URL / CDK 更新 / テスト
+- [x] 2026-07-08 検収（Fable レビューで 5 件修正）: ①regex `in .* regions` の誤爆を available 必須化で修正（実 RSS 100件で region 15件確定・誤爆ゼロを実測）②worker の不要な dynamodb:UpdateItem 削除 ③webhook 例外時も 200 返却（LINE 再送での二重適用防止）④Scan の 1MB ページネーション追加 ⑤除外記事のログ追加。pytest 60件パス / cdk synth 成功。Codex サンドボックスに pytest が無くテスト未実行だった点も検収側で吸収
 - [ ] デプロイ（要 aws login）: channel_secret を SSM 登録 → cdk deploy → LINE コンソールに Webhook URL 設定
 - [ ] 実機確認: 「設定」→トグル操作、「いらない」タップ→「集計」反映、翌朝配信でフィルタ効果を観測
 

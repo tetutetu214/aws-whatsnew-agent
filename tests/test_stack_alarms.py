@@ -111,3 +111,66 @@ def test_ALERT_EMAIL設定時は指定アドレスへメール購読を作る(
             "Endpoint": "alerts@example.com",
         },
     )
+
+
+def test_SettingsWebhook用のFunctionURLが作られる(
+    template_without_email: Template,
+) -> None:
+    template_without_email.has_resource_properties(
+        "AWS::Lambda::Url",
+        {
+            "AuthType": "NONE",
+        },
+    )
+
+
+def test_Workerから旧フィルタ環境変数を除去してfilter_configを参照する(
+    template_without_email: Template,
+) -> None:
+    template_without_email.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "handler.lambda_handler",
+            "Environment": {
+                "Variables": Match.object_like(
+                    {
+                        "FILTER_CONFIG_PARAM": "/whatsnew-agent/filter/config",
+                    }
+                )
+            },
+        },
+    )
+    template_without_email.resource_properties_count_is(
+        "AWS::Lambda::Function",
+        {
+            "Environment": {
+                "Variables": Match.object_like(
+                    {
+                        "EXCLUDE_SERVICES": Match.any_value(),
+                    }
+                )
+            }
+        },
+        0,
+    )
+
+
+def test_SettingsWebhookはwebhook_handlerで作られる(
+    template_without_email: Template,
+) -> None:
+    template_without_email.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "webhook.lambda_handler",
+            "Environment": {
+                "Variables": Match.object_like(
+                    {
+                        "LINE_CHANNEL_SECRET_PARAM": (
+                            "/whatsnew-agent/line/channel_secret"
+                        ),
+                        "FILTER_CONFIG_PARAM": "/whatsnew-agent/filter/config",
+                    }
+                )
+            },
+        },
+    )

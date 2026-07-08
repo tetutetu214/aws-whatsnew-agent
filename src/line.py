@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 from urllib import request
+import hashlib
 import json
 import logging
 
@@ -13,79 +13,34 @@ except ImportError:
 
 LOGGER = logging.getLogger(__name__)
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
-LINE_TEXT_LIMIT = 5000
 LINE_MESSAGES_PER_REQUEST = 5
-# Lambda 実行環境は UTC のため astimezone() 任せだと朝7時JST実行で前日の日付になる。
-# JST は夏時間がなく固定 +9 で正確（tzdata 依存も避けられる）。
-JST = timezone(timedelta(hours=9), name="JST")
+SUMMARY_LIMIT = 700
 
 
 @dataclass(frozen=True)
 class ArticleSummary:
     article: Article
     summary: str
+    category: str = "other"
 
 
 @dataclass(frozen=True)
-class MessageChunk:
-    text: str
+class FlexMessage:
+    message: dict[str, Any]
     article_ids: tuple[str, ...]
+    short_id: str
 
 
-def build_message_chunks(
+def build_flex_messages(
     article_summaries: list[ArticleSummary],
-    max_articles_per_message: int = 10,
-    now: datetime | None = None,
-    text_limit: int = LINE_TEXT_LIMIT,
-) -> list[MessageChunk]:
-    if not article_summaries:
-        return []
-
-    current_now = now or datetime.now(UTC)
-    date_text = current_now.astimezone(JST).strftime("%Y-%m-%d")
-    header = f"AWS What's New {date_text}: {len(article_summaries)}件"
-    chunks: list[MessageChunk] = []
-    current_lines = [header]
-    current_ids: list[str] = []
-
-    for item in article_summaries:
-        entry = _format_entry(item)
-        if len(entry) > text_limit - len(header) - 2:
-            entry = entry[: text_limit - len(header) - 5] + "..."
-
-        next_text = "\n\n".join([*current_lines, entry])
-        should_split_by_count = len(current_ids) >= max_articles_per_message
-        should_split_by_length = len(next_text) > text_limit
-
-        if current_ids and (should_split_by_count or should_split_by_length):
-            chunks.append(
-                MessageChunk(
-                    text="\n\n".join(current_lines),
-                    article_ids=tuple(current_ids),
-                )
-            )
-            current_lines = [header, entry]
-            current_ids = [item.article.article_id]
-            continue
-
-        current_lines.append(entry)
-        current_ids.append(item.article.article_id)
-
-    if current_ids:
-        chunks.append(
-            MessageChunk(
-                text="\n\n".join(current_lines),
-                article_ids=tuple(current_ids),
-            )
-        )
-
-    return chunks
+) -> list[FlexMessage]:
+    return [_build_flex_message(item) for item in article_summaries]
 
 
 def send_message_chunks(
     user_id: str,
     channel_token: str,
-    chunks: list[MessageChunk],
+    chunks: list[FlexMessage],
     opener: Any | None = None,
 ) -> set[str]:
     sent_ids: set[str] = set()
@@ -108,22 +63,15 @@ def send_message_chunks(
     return sent_ids
 
 
-def _format_entry(item: ArticleSummary) -> str:
-    return f"• {item.summary}\n  詳細: {item.article.link}"
-
-
 def _send_push_batch(
     user_id: str,
     channel_token: str,
-    batch: list[MessageChunk],
+    batch: list[FlexMessage],
     opener: Any,
 ) -> None:
     payload = {
         "to": user_id,
-        "messages": [
-            {"type": "text", "text": chunk.text[:LINE_TEXT_LIMIT]}
-            for chunk in batch
-        ],
+        "messages": [chunk.message for chunk in batch],
     }
     data = json.dumps(payload).encode("utf-8")
     line_request = request.Request(
@@ -139,3 +87,74 @@ def _send_push_batch(
         status_code = getattr(response, "status", 200)
         if status_code < 200 or status_code >= 300:
             raise RuntimeError(f"LINE API returned status {status_code}")
+
+
+def _build_flex_message(item: ArticleSummary) -> FlexMessage:
+    short_id = build_short_id(item.article.article_id)
+    message = {
+        "type": "flex",
+        "altText": _truncate(f"AWS What's New: {item.article.title}", 400),
+        "contents": {
+            "type": "bubble",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": item.article.title,
+                        "weight": "bold",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": _truncate(item.summary, SUMMARY_LIMIT),
+                        "wrap": True,
+                        "size": "sm",
+                    },
+                ],
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "action": {
+                            "type": "uri",
+                            "label": "詳細",
+                            "uri": item.article.link,
+                        },
+                    },
+                    {
+                        "type": "button",
+                        "style": "secondary",
+                        "action": {
+                            "type": "postback",
+                            "label": "いらない",
+                            "data": f"action=dislike&sid={short_id}",
+                            "displayText": "いらない",
+                        },
+                    },
+                ],
+            },
+        },
+    }
+    return FlexMessage(
+        message=message,
+        article_ids=(item.article.article_id,),
+        short_id=short_id,
+    )
+
+
+def build_short_id(article_id: str) -> str:
+    return hashlib.sha256(article_id.encode("utf-8")).hexdigest()[:12]
+
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
