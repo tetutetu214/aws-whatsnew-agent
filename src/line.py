@@ -134,9 +134,11 @@ def _build_flex_message(item: ArticleSummary) -> FlexMessage:
                         "style": "secondary",
                         "action": {
                             "type": "postback",
-                            "label": "いらない",
+                            # 「いらない」はサービス自体の否定に読めるため
+                            # 「自分には関係ない」の意の Not for Me にする（2026-07-08 てつてつ指定）
+                            "label": "Not for Me",
                             "data": f"action=dislike&sid={short_id}",
-                            "displayText": "いらない",
+                            "displayText": "Not for Me",
                         },
                     },
                 ],

@@ -452,7 +452,7 @@ def _suggestion_buttons_message(suggestions: list[dict[str, str]]) -> dict[str, 
 def _stats_text(items: list[dict[str, str]]) -> str:
     disliked = [item for item in items if item.get("feedback") == "dislike"]
     if not disliked:
-        return "いらない総数: 0"
+        return "Not for Me 総数: 0"
     by_category = Counter(item.get("category", "unknown") for item in disliked)
     recent = sorted(
         disliked,
@@ -468,7 +468,7 @@ def _stats_text(items: list[dict[str, str]]) -> str:
         for item in recent
     )
     return (
-        f"いらない総数: {len(disliked)}\n"
+        f"Not for Me 総数: {len(disliked)}\n"
         f"カテゴリ別:\n{category_lines}\n"
         f"直近10件:\n{recent_lines}"
     )
