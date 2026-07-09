@@ -40,7 +40,7 @@
 
 - [x] 2026-07-09 設計: plan.md Phase 2 実体化 / spec.md §10 追記
 - [x] 2026-07-09 実装（2.1+2.2）: Flexにボタン追加 / webhook explain分岐＋非同期trigger(agent_trigger.py) / explainer.py（記事→HTML→S3→presigned→Push）/ feedback mapping に description・link 追加 / AgentCore Runtime成果物(agent/agent_runtime.py・Dockerfile・requirements) / CDK(S3・実行ロール・InvokeAgentRuntime権限)
-- [x] 2026-07-09 ローカル検収: pytest 73件パス / cdk synth 成功
+- [x] 2026-07-09 ローカル検収＋レビュー反映: reviewer 監査で blocking 1件（invoke_agent_runtime が同期でwebhookをブロック）を検出 → **webhook→dispatcher Lambda(Event)→AgentCore の2段非同期**に修正。例外スコープ・テスト強化も反映。pytest 78件パス / cdk synth 成功。デプロイ前の要確認5点は spec.md §10.10
 - [ ] **【要 aws login・てつてつ起床後】2.3 デプロイ＆E2E**（spec.md §10.8 runbook）:
   1. `cd agent && agentcore configure --entrypoint agent_runtime.py && agentcore launch`（実行ロールに ExplainerAgentRole 相当を指定／CfnOutput参照）
   2. 取得した runtime ARN を webhook env `AGENT_RUNTIME_ARN` に設定 → `cdk deploy`

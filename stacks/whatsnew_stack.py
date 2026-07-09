@@ -237,11 +237,24 @@ class WhatsNewStack(Stack):
             )
         )
 
-        # webhook が AgentCore Runtime を非同期起動できるようにする。
-        # ARN は launch 後に env AGENT_RUNTIME_ARN へ設定する（初期は空プレースホルダ）。
-        webhook.add_environment("AGENT_RUNTIME_ARN", "")
-        webhook.add_environment("EXPLAINER_BUCKET", explainer_bucket.bucket_name)
-        webhook.add_to_role_policy(
+        # webhook → dispatcher Lambda(Event 非同期) → AgentCore Runtime の2段構え。
+        # invoke_agent_runtime は同期 API のため webhook(60s) から直接叩くとブロックして
+        # タイムアウト→LINE 再送→二重生成を招く。投げっぱなしできる dispatcher を挟み、
+        # webhook を即応させる（dispatcher はクリティカルパス外なので長め timeout）。
+        explainer_dispatcher = lambda_.Function(
+            self,
+            "ExplainerDispatcher",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="agent_trigger.lambda_handler",
+            code=lambda_.Code.from_asset("src"),
+            timeout=Duration.seconds(300),
+            memory_size=256,
+            environment={
+                # launch 後に AgentCore Runtime の ARN を設定（初期は空プレースホルダ）
+                "AGENT_RUNTIME_ARN": "",
+            },
+        )
+        explainer_dispatcher.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["bedrock-agentcore:InvokeAgentRuntime"],
                 resources=[
@@ -253,6 +266,12 @@ class WhatsNewStack(Stack):
                 ],
             )
         )
+        # webhook は dispatcher を非同期(Event)起動するだけ（即応のため）
+        webhook.add_environment(
+            "EXPLAINER_DISPATCHER_FUNCTION",
+            explainer_dispatcher.function_name,
+        )
+        explainer_dispatcher.grant_invoke(webhook)
 
         CfnOutput(self, "ExplainerBucketName", value=explainer_bucket.bucket_name)
         CfnOutput(self, "ExplainerAgentRoleArn", value=explainer_role.role_arn)

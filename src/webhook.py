@@ -272,7 +272,7 @@ def _handle_explain(
         [_text_message("🎨 図解を生成中です。少しお待ちください。")],
         opener,
     )
-    invoke = trigger or agent_trigger.invoke_explainer
+    invoke = trigger or agent_trigger.dispatch_async
     invoke(short_id)
 
 

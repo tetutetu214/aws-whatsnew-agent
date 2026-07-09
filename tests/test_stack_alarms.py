@@ -197,7 +197,21 @@ def test_Phase2の図解HTML用S3バケットが作られる(
     )
 
 
-def test_webhookはAgentCoreRuntimeを起動できる権限を持つ(
+def test_dispatcherがAgentCoreRuntimeを起動する非同期Lambdaとして作られる(
+    template_without_email: Template,
+) -> None:
+    # webhook(60s) から invoke_agent_runtime を直叩きするとブロックするため、
+    # 投げっぱなしできる dispatcher Lambda を挟む。
+    template_without_email.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "agent_trigger.lambda_handler",
+            "Timeout": 300,
+        },
+    )
+
+
+def test_AgentCoreRuntime起動権限はdispatcher側にある(
     template_without_email: Template,
 ) -> None:
     template_without_email.has_resource_properties(

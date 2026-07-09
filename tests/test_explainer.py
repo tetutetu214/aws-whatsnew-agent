@@ -35,6 +35,7 @@ class FailingBedrock:
 class FakeS3:
     def __init__(self) -> None:
         self.put_calls: list[dict[str, object]] = []
+        self.presign_ops: list[str] = []
 
     def put_object(self, **kwargs: object) -> None:
         self.put_calls.append(kwargs)
@@ -45,7 +46,8 @@ class FakeS3:
         Params: dict[str, str],
         ExpiresIn: int,
     ) -> str:
-        del operation, ExpiresIn
+        del ExpiresIn
+        self.presign_ops.append(operation)
         return f"https://signed.example/{Params['Key']}"
 
 
@@ -112,19 +114,23 @@ def test_build_htmlはコードフェンスを剥がす() -> None:
     assert build_html("題", "本文", "", "model-x", bedrock) == "<html>x</html>"
 
 
-def test_store_htmlはtext_htmlのContentTypeでputする() -> None:
+def test_store_htmlはtext_htmlのContentTypeで指定バケットにputする() -> None:
     s3 = FakeS3()
 
     store_html("<html></html>", s3, "bucket", "explainer/a.html")
 
     assert s3.put_calls[0]["ContentType"] == "text/html; charset=utf-8"
+    assert s3.put_calls[0]["Bucket"] == "bucket"
     assert s3.put_calls[0]["Key"] == "explainer/a.html"
 
 
 def test_presignはget_objectの署名URLを返す() -> None:
-    url = presign(FakeS3(), "bucket", "explainer/a.html", 3600)
+    s3 = FakeS3()
+
+    url = presign(s3, "bucket", "explainer/a.html", 3600)
 
     assert url == "https://signed.example/explainer/a.html"
+    assert s3.presign_ops == ["get_object"]
 
 
 def test_generate_explainerは図解を作りpresignedリンクをPushする() -> None:

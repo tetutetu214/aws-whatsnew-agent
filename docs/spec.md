@@ -168,9 +168,12 @@
 - `generate_explainer(short_id, *, article_store, config, mcp_call=None, bedrock_client=None, s3_client=None, opener=None, secrets_loader=None) -> dict`: オーケストレーション。mapping 取得 → build_html → store_html（key=`{prefix}{short_id}-{yyyymmdd}.html` 相当、日付は published か固定でよい／衝突回避に short_id 含む）→ presign → LINE Push（token/user_id は secrets_loader で SSM から）。例外時は「⚠️ 図解の生成に失敗しました」を Push し、`LOGGER.exception` で残す。戻りは `{status, key, url}`。
 - LINE Push は line.py の様式（urllib, `LINE_PUSH_URL`, Bearer）を踏襲。共通化のため `line.push_messages(user_id, token, messages, opener=None)` を line.py に追加して再利用してよい。
 
-### 10.4 非同期トリガ（`src/agent_trigger.py`）
-- `invoke_explainer(short_id, *, runtime_arn=None, client=None) -> None`: 既定は `boto3.client("bedrock-agentcore")` の `invoke_agent_runtime(agentRuntimeArn=env AGENT_RUNTIME_ARN, payload=json({"short_id": short_id}))` を**非同期前提**で呼ぶ（webhook をブロックしない）。テストではフェイク client / 注入した trigger で検証。webhook 側は `_handle_explain` に `trigger` を注入可能にする。
-- 注: AgentCore invoke が同期ブロッキングな場合に備え、デプロイ時に「webhook → Event Lambda シム → AgentCore」への切替余地を残す（deploy 時の確認事項）。
+### 10.4 非同期トリガ（`src/agent_trigger.py`・2段構え）
+`invoke_agent_runtime` は同期 API なので webhook(60s) から直叩きするとブロックしてタイムアウト→LINE 再送→二重生成を招く（レビュー指摘 blocking-1）。そこで **webhook → dispatcher Lambda(Event 非同期) → AgentCore Runtime** の2段にする。
+- `dispatch_async(short_id, *, function_name=None, client=None) -> None`: webhook から呼ぶ。`lambda` client の `invoke(FunctionName=env EXPLAINER_DISPATCHER_FUNCTION, InvocationType="Event", Payload=json({"short_id": short_id}))` で投げっぱなし（数ミリ秒で復帰）。`_handle_explain` は `trigger` 注入可能で既定がこれ。
+- `lambda_handler(event, context)`: dispatcher Lambda のエントリ。`short_id` を受け `invoke_agent_runtime` を呼ぶ。dispatcher は webhook のクリティカルパス外なので timeout 300s で AgentCore 完了まで待ってよい。
+- `invoke_agent_runtime(short_id, *, runtime_arn=None, client=None)`: `bedrock-agentcore` の `invoke_agent_runtime(agentRuntimeArn=env AGENT_RUNTIME_ARN, ...)`。
+- テストは fake client 注入で「dispatch_async が Event 型で投げる」「lambda_handler が short_id で AgentCore を起動」の契約を固定（tests/test_agent_trigger.py）。
 
 ### 10.5 AgentCore Runtime（`agent/`）
 - `agent/agent_runtime.py`: `bedrock_agentcore` の `BedrockAgentCoreApp` + `@app.entrypoint`。payload の `short_id` を受け、`store.SentArticleStore` と `explainer.load_explainer_config()` を組み、`explainer.generate_explainer(short_id, ...)` を実クライアントで実行。
@@ -199,4 +202,11 @@
 
 ### 10.9 Phase 2 の完了条件（DoD）
 plan.md「本 Phase の完了条件」と同一。今夜のコミット時点の完了条件は「2.1/2.2 のコード・テストが揃い pytest 緑・`cdk synth` 成功・PR 作成済み。実 launch/deploy と E2E は runbook として残す」。
+
+### 10.10 デプロイ前の確認事項（2026-07-09 レビュー由来・要 aws login で実機確認）
+- **OpenAI モデルの推論プロファイル要否**: 実行ロールの `bedrock:InvokeModel` は `foundation-model/openai.*` のみ許可。GPT-5.5/gpt-oss がクロスリージョン推論プロファイル経由でしか呼べない場合、`inference-profile/*` とプロファイル対象 FM ARN の追加が要る（無いと AccessDenied）。launch 前に Bedrock コンソールで確認。
+- **InvokeAgentRuntime のリソース ARN 形**: dispatcher の権限は `runtime/*`。invoke がエンドポイント sub-resource（`runtime/<id>/runtime-endpoint/*`）を対象にするなら ARN パターンを合わせる。
+- **presigned URL の失効**: AgentCore 実行ロールの一時クレデンシャルで署名するため、URL はセッショントークン失効で無効化される。1時間の presign_expiry より短命なら期限前にリンク切れ。持たない場合は CloudFront + OAC 等へ切替を検討。
+- **多重押下の冪等性**: 同一 short_id 連打で毎回生成・Push する。Event 化で LINE 再送起因の二重は解消したが、手動連打の抑止（短命マーカー等）は未実装。運用で問題化したら追加。
+- **既定モデル/リージョン**: 既定は安全側の `openai.gpt-oss-120b-1:0`/us-east-1。GPT-5.5 にするには `agentcore launch` 時に AgentCore Runtime の env へ `EXPLAINER_MODEL_ID`/`EXPLAINER_BEDROCK_REGION` を設定する（設定漏れると gpt-oss で動く）。
 

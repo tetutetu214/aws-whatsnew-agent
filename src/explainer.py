@@ -177,22 +177,24 @@ def generate_explainer(
     opener: Any | None = None,
     secrets_loader: Any | None = None,
 ) -> dict[str, Any]:
+    # token/user_id が取れないと失敗通知すら送れないので最初に取得する（失敗時は素通しでログ）。
     token, user_id = (secrets_loader or _load_line_secrets)(
         config.line_token_param,
         config.line_user_id_param,
     )
 
-    mapping = article_store.get_feedback_mapping(short_id)
-    if not mapping:
-        line.push_messages(
-            user_id,
-            token,
-            [{"type": "text", "text": "対象の記事が見つかりません"}],
-            opener,
-        )
-        return {"status": "not_found", "short_id": short_id}
-
     try:
+        # DynamoDB 取得失敗も下の except で失敗通知できるよう try 内に入れる。
+        mapping = article_store.get_feedback_mapping(short_id)
+        if not mapping:
+            line.push_messages(
+                user_id,
+                token,
+                [{"type": "text", "text": "対象の記事が見つかりません"}],
+                opener,
+            )
+            return {"status": "not_found", "short_id": short_id}
+
         bedrock_client = bedrock_client or _bedrock_client(config.bedrock_region)
         s3_client = s3_client or _s3_client()
 
