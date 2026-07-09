@@ -1,6 +1,10 @@
 # knowledge.md — aws-whatsnew-agent
 
 ## 決定事項
+- 2026-07-09: Phase2（図解生成エージェント）の設計を確定し 2.1/2.2 を実装。画像生成エンジンは3案比較の結果 **案C=GPT-5.5 が自己完結HTMLを書き、ブラウザ表示に委ねる**方式を採用。理由: Bedrock 上の OpenAI モデルは公式に text-in/text-out のみ（画像不可）だが SVG/HTML はテキストなので生成でき、**全 IAM・外部キーゼロ・日本語確実**。A案(gpt-image直叩き)は Bedrock 非対応で OpenAI キーが要るため不採用、B案(Nova Canvas等拡散モデル)は日本語インフォグラフィック文字が崩れやすく不採用。原型 `~/projects/aws-whatnew-visual/html_test/` で codex(gpt-5.5)→自己完結HTML→Chrome描画の実測で有効性を確認（日本語崩れなし。下端はみ出しは要調整）。
+- 2026-07-09: 配信は **HTML を S3 に置き presigned URL リンクを LINE Push**（PNG化しない）。理由: LINE 画像インライン表示のためだけに PNG 化するのは本末転倒。HTML はズーム可・レスポンシブ・文字鮮明でスマホで密な日本語図解を読むのに固定PNGより優れ、描画工程(Chrome/AgentCore Browser)も不要で堅牢・安価。インライン表示が要るとき初めてPNG化を足す。
+- 2026-07-09: OpenAI モデルは 2026-06-01 に **Bedrock ネイティブ GA**（GPT-5.5/5.4/Codex）。`bedrock:InvokeModel` を IAM で叩くだけで呼べ、OpenAI キー不要。ただし**画像生成は非対応**（gpt-image は OpenAI ホスト側のみ）。GPT-5.5 は **US East (Ohio, us-east-2)**、本スタックは us-east-1 なので図解の Bedrock 呼び出しだけリージョンを分ける(`EXPLAINER_BEDROCK_REGION`)。既定モデルは確実に存在する `openai.gpt-oss-120b-1:0`(us-east-1) にしておき、GPT-5.5 へは env で切替。
+- 2026-07-09: 図解生成は数十秒かかるため非同期。webhook は即200＋「生成中」reply→AgentCore Runtime を invoke_agent_runtime で起動→完了後 **reply ではなく Push**（reply トークンは短命なため）。AgentCore Runtime は CFn ではなく `agentcore configure/launch`（Docker）でデプロイ。CDK は S3・IAM・権限のみ担当。
 - 2026-07-01: プロジェクト名を aws-whatsnew-agent に決定。GitHub Private で作成。
 - 2026-07-01: Phase を分割。Phase1 = 決定論パイプライン（LINE 送信）、Phase2 = エージェント化（未設計）。
 - 2026-07-01: MCP は開発時のみ使用。Phase1 本番には組み込まない（RSS / Bedrock を直接呼ぶ）。

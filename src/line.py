@@ -63,6 +63,35 @@ def send_message_chunks(
     return sent_ids
 
 
+def push_messages(
+    user_id: str,
+    channel_token: str,
+    messages: list[dict[str, Any]],
+    opener: Any | None = None,
+) -> None:
+    # 任意のメッセージ（図解リンク・失敗通知など）を Push する汎用ヘルパ。
+    # Phase2 のエージェントが reply トークン切れ後に結果を届けるのに使う。
+    request_opener = opener or request.urlopen
+    payload = {
+        "to": user_id,
+        "messages": messages[:LINE_MESSAGES_PER_REQUEST],
+    }
+    data = json.dumps(payload).encode("utf-8")
+    line_request = request.Request(
+        LINE_PUSH_URL,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {channel_token}",
+        },
+        method="POST",
+    )
+    with request_opener(line_request, timeout=20) as response:
+        status_code = getattr(response, "status", 200)
+        if status_code < 200 or status_code >= 300:
+            raise RuntimeError(f"LINE push failed: {status_code}")
+
+
 def _send_push_batch(
     user_id: str,
     channel_token: str,
@@ -139,6 +168,17 @@ def _build_flex_message(item: ArticleSummary) -> FlexMessage:
                             "label": "Not for Me",
                             "data": f"action=dislike&sid={short_id}",
                             "displayText": "Not for Me",
+                        },
+                    },
+                    {
+                        "type": "button",
+                        "style": "secondary",
+                        "action": {
+                            # Phase2: 押すと図解を非同期生成し presigned URL を Push
+                            "type": "postback",
+                            "label": "グラフィカル解説",
+                            "data": f"action=explain&sid={short_id}",
+                            "displayText": "グラフィカル解説",
                         },
                     },
                 ],

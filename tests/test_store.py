@@ -145,10 +145,13 @@ def test_feedback対応レコードから元記事を取得できる() -> None:
 
     mapping = store.get_feedback_mapping("abc123")
 
+    # Phase2 の図解生成が本文・リンクを使えるよう link/description も返す
     assert mapping == {
         "article_id": "article-1",
         "title": "title",
         "category": "other",
+        "link": "https://example.com/article-1",
+        "description": "description",
     }
 
 

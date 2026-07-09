@@ -65,6 +65,9 @@ class SentArticleStore:
             "status": {"S": "feedback_mapping"},
             "expire_at": {"N": str(_expire_at(self.ttl_days))},
         }
+        # Phase2 の図解生成が本文を使えるよう description も残す（空なら付けない）
+        if article.description:
+            item["description"] = {"S": article.description}
         self.client.put_item(TableName=self.table_name, Item=item)
 
     def get_feedback_mapping(self, short_id: str) -> dict[str, str] | None:
@@ -79,6 +82,8 @@ class SentArticleStore:
             "article_id": item.get("article_ref", {}).get("S", ""),
             "title": item.get("title", {}).get("S", ""),
             "category": item.get("category", {}).get("S", ""),
+            "link": item.get("link", {}).get("S", ""),
+            "description": item.get("description", {}).get("S", ""),
         }
 
     def mark_dislike(self, article_id: str) -> None:

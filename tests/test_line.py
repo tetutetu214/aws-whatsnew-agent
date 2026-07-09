@@ -58,6 +58,17 @@ def test_いらないボタンはshort_idをpostback_dataに含める() -> None:
     assert dislike_button["data"] == f"action=dislike&sid={messages[0].short_id}"
 
 
+def test_グラフィカル解説ボタンはexplainのpostback_dataを持つ() -> None:
+    messages = build_flex_messages([_summary(1)])
+
+    footer = messages[0].message["contents"]["footer"]["contents"]
+    explain_button = footer[2]["action"]
+
+    assert explain_button["type"] == "postback"
+    assert explain_button["label"] == "グラフィカル解説"
+    assert explain_button["data"] == f"action=explain&sid={messages[0].short_id}"
+
+
 def test_push送信は5メッセージごとにリクエストを分割する() -> None:
     chunks = [
         FlexMessage(

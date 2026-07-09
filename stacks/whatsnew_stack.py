@@ -6,6 +6,7 @@ from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_scheduler as scheduler
 from aws_cdk import aws_sns as sns
 from aws_cdk import aws_sns_subscriptions as sns_subscriptions
@@ -180,6 +181,81 @@ class WhatsNewStack(Stack):
                 ],
             )
         )
+
+        # --- Phase2: 図解エージェント（AgentCore Runtime + S3 presigned 配信） ---
+        # 生成 HTML の置き場。presigned URL で配るので公開不要。7日で自動失効。
+        explainer_bucket = s3.Bucket(
+            self,
+            "ExplainerBucket",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            lifecycle_rules=[
+                s3.LifecycleRule(expiration=Duration.days(7)),
+            ],
+        )
+
+        # AgentCore Runtime の実行ロール。`agentcore launch --execution-role` で使う想定。
+        # 最小権限: 生成 HTML の put/get / OpenAI モデルの InvokeModel / 記事取得 / LINE シークレット。
+        explainer_role = iam.Role(
+            self,
+            "ExplainerAgentRole",
+            assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+        )
+        explainer_bucket.grant_read_write(explainer_role)
+        explainer_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                # GPT-5.5 は us-east-2、既定の gpt-oss は us-east-1。両リージョンの OpenAI 系を許可。
+                resources=[
+                    "arn:aws:bedrock:us-east-1::foundation-model/openai.*",
+                    "arn:aws:bedrock:us-east-2::foundation-model/openai.*",
+                ],
+            )
+        )
+        explainer_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["dynamodb:GetItem"],
+                resources=[table.table_arn],
+            )
+        )
+        explainer_role.add_to_policy(
+            iam.PolicyStatement(
+                actions=["ssm:GetParameter"],
+                resources=[
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=line_token_param.lstrip("/"),
+                    ),
+                    self.format_arn(
+                        service="ssm",
+                        resource="parameter",
+                        resource_name=line_user_id_param.lstrip("/"),
+                    ),
+                ],
+            )
+        )
+
+        # webhook が AgentCore Runtime を非同期起動できるようにする。
+        # ARN は launch 後に env AGENT_RUNTIME_ARN へ設定する（初期は空プレースホルダ）。
+        webhook.add_environment("AGENT_RUNTIME_ARN", "")
+        webhook.add_environment("EXPLAINER_BUCKET", explainer_bucket.bucket_name)
+        webhook.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock-agentcore:InvokeAgentRuntime"],
+                resources=[
+                    self.format_arn(
+                        service="bedrock-agentcore",
+                        resource="runtime",
+                        resource_name="*",
+                    ),
+                ],
+            )
+        )
+
+        CfnOutput(self, "ExplainerBucketName", value=explainer_bucket.bucket_name)
+        CfnOutput(self, "ExplainerAgentRoleArn", value=explainer_role.role_arn)
 
         scheduler_role = iam.Role(
             self,

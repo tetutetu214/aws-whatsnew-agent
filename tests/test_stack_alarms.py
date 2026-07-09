@@ -174,3 +174,43 @@ def test_SettingsWebhookはwebhook_handlerで作られる(
             },
         },
     )
+
+
+def test_Phase2の図解HTML用S3バケットが作られる(
+    template_without_email: Template,
+) -> None:
+    # presigned で配るので公開ブロック、7日で自動失効。
+    template_without_email.has_resource_properties(
+        "AWS::S3::Bucket",
+        {
+            "PublicAccessBlockConfiguration": Match.object_like(
+                {"BlockPublicPolicy": True}
+            ),
+            "LifecycleConfiguration": Match.object_like(
+                {
+                    "Rules": Match.array_with(
+                        [Match.object_like({"ExpirationInDays": 7})]
+                    )
+                }
+            ),
+        },
+    )
+
+
+def test_webhookはAgentCoreRuntimeを起動できる権限を持つ(
+    template_without_email: Template,
+) -> None:
+    template_without_email.has_resource_properties(
+        "AWS::IAM::Policy",
+        {
+            "PolicyDocument": {
+                "Statement": Match.array_with(
+                    [
+                        Match.object_like(
+                            {"Action": "bedrock-agentcore:InvokeAgentRuntime"}
+                        )
+                    ]
+                )
+            }
+        },
+    )

@@ -35,6 +35,16 @@
 - [x] Phase1 実装（Codex 委譲）: CDK スタック + Lambda(RSS/store/summarize/line) + テスト13件
 - [x] ローカル検証: pytest 13件パス / cdk synth 成功 / 実 RSS 100件パース確認
 
-## Phase 2（未着手・設計中）
-- [ ] エージェント要件の洗い出し（次の議論の主題）
-- [ ] AgentCore 採用可否の判断
+## Phase 2: 図解の自動生成エージェント（2026-07-09 着手・設計確定）
+設計根拠は plan.md「Phase 2」/ spec.md §10。構成: LINE「グラフィカル解説」ボタン → webhook 即200＋「生成中」reply → AgentCore Runtime 非同期起動 → 記事取得→(AWS MCP)→Bedrock OpenAIモデルで自己完結HTML生成→S3→presigned URL→LINE Push で「📊 図解を開く」リンク。全 IAM・外部キーゼロ。画像エンジンは案C（GPT-5.5がHTMLを書く。原型 aws-whatnew-visual/html_test/ で実証済）。
+
+- [x] 2026-07-09 設計: plan.md Phase 2 実体化 / spec.md §10 追記
+- [x] 2026-07-09 実装（2.1+2.2）: Flexにボタン追加 / webhook explain分岐＋非同期trigger(agent_trigger.py) / explainer.py（記事→HTML→S3→presigned→Push）/ feedback mapping に description・link 追加 / AgentCore Runtime成果物(agent/agent_runtime.py・Dockerfile・requirements) / CDK(S3・実行ロール・InvokeAgentRuntime権限)
+- [x] 2026-07-09 ローカル検収: pytest 73件パス / cdk synth 成功
+- [ ] **【要 aws login・てつてつ起床後】2.3 デプロイ＆E2E**（spec.md §10.8 runbook）:
+  1. `cd agent && agentcore configure --entrypoint agent_runtime.py && agentcore launch`（実行ロールに ExplainerAgentRole 相当を指定／CfnOutput参照）
+  2. 取得した runtime ARN を webhook env `AGENT_RUNTIME_ARN` に設定 → `cdk deploy`
+  3. LINE の配信済みカードで「グラフィカル解説」を押し、数十秒後に「📊 図解を開く」Pushが届きHTMLが開くことを確認
+  4. `EXPLAINER_MODEL_ID`/`EXPLAINER_BEDROCK_REGION` を GPT-5.5(us-east-2, openai.gpt-5.5-* の正確なID)に切替（既定は gpt-oss-120b/us-east-1 で稼働）
+- [ ] 2.3 後: 生成HTMLの下端はみ出し等プロンプト/レイアウト調整（原型検証で確認済の課題）
+- [ ] AWS Knowledge MCP の本番接続（agent側で mcp_call を注入。未接続時は description フォールバックで動作）

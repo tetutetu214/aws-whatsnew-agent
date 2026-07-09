@@ -139,3 +139,64 @@
 ### 9.8 Phase 1.5 の完了条件
 「配信が Flex 形式になり各記事に『いらない』ボタンが付く。タップが DynamoDB に記録され『集計』で内訳が見える。『設定』でカテゴリの ON/OFF・追加・削除ができ、除外 ON カテゴリの新着（ルールまたは Nova 分類で判定）は翌朝の配信から消え `status=filtered` で記録される。『提案』でいらないコーパスから新カテゴリ候補が返り、承認で追加できる。」
 
+## 10. Phase 2: 図解の自動生成エージェント（2026-07-09 着手）
+
+このサービスの本質。記事ごとに「グラフィカルに解説した図解（自己完結 HTML）」をオンデマンド生成し、S3 の presigned URL リンクを LINE Push する。原型は `~/projects/aws-whatnew-visual/`。設計判断の根拠は plan.md「Phase 2」参照（画像エンジン=案C／全 IAM・キーゼロ／GPT-5.5 は us-east-2）。
+
+### 10.1 起動と配信（オンデマンド・非同期）
+- 各記事の Flex カード footer に 3 つ目のボタン **「グラフィカル解説」**（style secondary）。postback `data=action=explain&sid=<short_id>`。
+- webhook が `action=explain` を受けたら:
+  1. `store.get_feedback_mapping(short_id)` で記事を引く。無ければ「対象の記事が見つかりません」を **reply**。
+  2. 「🎨 図解を生成中です。少しお待ちください。」を **reply**（即時・reply token 使用）。
+  3. **非同期トリガ**で AgentCore Runtime を起動（webhook はここでブロックしない）。webhook はすぐ 200 を返す。
+- 生成完了後、エージェントが **LINE Push** で「📊 図解を開く」リンク（presigned URL）を送る。reply token は短命なので使わず Push。
+
+### 10.2 データ（feedback mapping の拡張）
+- 図解生成には title / description / link が要る。現状 `save_feedback_mapping` は title / link / article_ref のみ保存し、`get_feedback_mapping` は article_id / title / category しか返さない。→ **`save_feedback_mapping` に `description` を追加保存**し、**`get_feedback_mapping` の戻りに `link` と `description` を追加**する（後方互換: 欠損時は空文字）。`run_pipeline` が mapping を作る箇所（handler.py）は Article を渡しているので description も渡せる。
+- 既存の配信済みカードには description が無いため、図解は title + link + MCP コンテキストで生成（description 欠損でも動く）。
+
+### 10.3 エージェント本体（`src/explainer.py`・framework 非依存）
+純粋関数＋クライアント注入（既存 DI 規約に合わせる）。AgentCore Runtime からも Lambda からも呼べる。
+- `ExplainerConfig`（dataclass, frozen）: `bucket`, `model_id`（GPT-5.5, 既定は env `EXPLAINER_MODEL_ID`）, `bedrock_region`（既定 `us-east-2`）, `presign_expiry_seconds`（既定 3600）, `key_prefix`（既定 `explainer/`）, `line_token_param`, `line_user_id_param`。
+- `load_explainer_config(environ=None)`: env から生成。
+- `HTML_SYSTEM_PROMPT`: 「AWS の更新を、グラフィカルに解説した1枚もののインフォグラフィックを、**自己完結 HTML** で。外部 CSS/JS/画像/Webフォント/CDN を一切参照しない（アイコン・図形はインライン SVG）。幅1672×高さ941 のキャンバス `.canvas` に**必ず収める**（はみ出し禁止・下端まで収める）。日本語は system-ui、白背景＋AWSオレンジ #FF9900 ＋濃紺見出し。**出力は HTML のみ**、説明文やマークダウンのコードフェンスを付けない」。原型検証（`aws-whatnew-visual/html_test/`）で有効性を実測済み。
+- `build_html(title, description, service_context, *, model_id, bedrock_client) -> str`: `bedrock_client.converse` で GPT-5.5 呼び出し（system=HTML_SYSTEM_PROMPT, user=タイトル/本文/サービス詳細, inferenceConfig maxTokens 大きめ 例4000・temperature 0.4）。返り値から ```html フェンス等を除去して HTML 文字列を返す。抽出は既存 `_extract_text` 同型。
+- `fetch_service_context(title, link, *, mcp_call=None) -> str`: AWS Knowledge MCP でサービス詳細を取得（原型の手書き本文の本番代替）。`mcp_call` 未注入時は空文字を返す（グレースフル・description で代替）。本番の MCP 配線は 2.3 で接続。
+- `store_html(html, *, s3_client, bucket, key) -> None`: `put_object(Body=html.encode("utf-8"), ContentType="text/html; charset=utf-8")`。
+- `presign(s3_client, bucket, key, expires) -> str`: `generate_presigned_url("get_object", ...)`。
+- `build_link_message(url, title) -> dict`: LINE flex（bubble, body にタイトル、footer に uri ボタン「📊 図解を開く」→ url）。
+- `generate_explainer(short_id, *, article_store, config, mcp_call=None, bedrock_client=None, s3_client=None, opener=None, secrets_loader=None) -> dict`: オーケストレーション。mapping 取得 → build_html → store_html（key=`{prefix}{short_id}-{yyyymmdd}.html` 相当、日付は published か固定でよい／衝突回避に short_id 含む）→ presign → LINE Push（token/user_id は secrets_loader で SSM から）。例外時は「⚠️ 図解の生成に失敗しました」を Push し、`LOGGER.exception` で残す。戻りは `{status, key, url}`。
+- LINE Push は line.py の様式（urllib, `LINE_PUSH_URL`, Bearer）を踏襲。共通化のため `line.push_messages(user_id, token, messages, opener=None)` を line.py に追加して再利用してよい。
+
+### 10.4 非同期トリガ（`src/agent_trigger.py`）
+- `invoke_explainer(short_id, *, runtime_arn=None, client=None) -> None`: 既定は `boto3.client("bedrock-agentcore")` の `invoke_agent_runtime(agentRuntimeArn=env AGENT_RUNTIME_ARN, payload=json({"short_id": short_id}))` を**非同期前提**で呼ぶ（webhook をブロックしない）。テストではフェイク client / 注入した trigger で検証。webhook 側は `_handle_explain` に `trigger` を注入可能にする。
+- 注: AgentCore invoke が同期ブロッキングな場合に備え、デプロイ時に「webhook → Event Lambda シム → AgentCore」への切替余地を残す（deploy 時の確認事項）。
+
+### 10.5 AgentCore Runtime（`agent/`）
+- `agent/agent_runtime.py`: `bedrock_agentcore` の `BedrockAgentCoreApp` + `@app.entrypoint`。payload の `short_id` を受け、`store.SentArticleStore` と `explainer.load_explainer_config()` を組み、`explainer.generate_explainer(short_id, ...)` を実クライアントで実行。
+- `agent/Dockerfile`, `agent/requirements.txt`（`bedrock-agentcore`, `boto3`）。src をコピーして import 可能に。
+- **デプロイは `agentcore configure` / `agentcore launch`**（CFn ではない）。今夜は成果物のみ用意し launch は起床後（AWS 実行）。
+
+### 10.6 インフラ（`stacks/whatsnew_stack.py` 追加分）
+- **S3 バケット** `ExplainerBucket`: `block_public_access=BLOCK_ALL`, `removal_policy=DESTROY`, `auto_delete_objects=True`, lifecycle で `expiration=Duration.days(7)`（presigned で配るので公開不要・自動失効）。
+- **AgentCore 実行ロール用ポリシー**（agentcore launch が作るロールに付与する想定・CfnOutput で ARN/名前を出す）: `s3:PutObject`/`GetObject`（バケット限定）、`bedrock:InvokeModel`（`arn:aws:bedrock:us-east-2::foundation-model/openai.*`）、`dynamodb:GetItem`（テーブル限定）、`ssm:GetParameter`（line token/user）。
+- **webhook 追加権限**: `bedrock-agentcore:InvokeAgentRuntime`（対象 runtime）。env に `AGENT_RUNTIME_ARN`（launch 後に SSM/env 反映）。
+- CfnOutput: バケット名、（あれば）実行ロール ARN。
+- 既存 webhook の env に `AGENT_RUNTIME_ARN` を追加（初期は空文字プレースホルダ可）。
+
+### 10.7 テスト（振る舞いベース・既存規約に合わせる）
+- `tests/test_line.py`: 「Flex に『グラフィカル解説』ボタンがあり postback data が `action=explain&sid=<short_id>`」。
+- `tests/test_webhook.py`: 「`action=explain` で①mapping 無→『見つかりません』reply ②mapping 有→『生成中』reply が飛び、trigger が short_id 付きで1回呼ばれる」。注入した fake trigger / fake opener で検証。
+- `tests/test_explainer.py`: 「build_html が GPT-5.5(converse) を model_id 指定で呼び HTML を返す／コードフェンスを剥がす」「store_html が ContentType text/html で put する」「presign が get_object の URL を返す」「generate_explainer が mapping→html→s3→push の順で presigned URL リンクを Push する」「Bedrock 例外時に失敗メッセージを Push する」。Bedrock/S3/LINE は**本物に到達できない環境なのでフェイク注入**（理由をファイル冒頭コメントに明記）。
+- `tests/test_stack_*`: S3 バケットと webhook の InvokeAgentRuntime 権限が synth に含まれることを1件確認。
+
+### 10.8 デプロイ runbook（てつてつ・`aws login` 後）
+1. `cdk synth` で差分確認（本コミットで検証済）。
+2. `cd agent && agentcore configure --entrypoint agent_runtime.py` → `agentcore launch`（Runtime 作成、ARN 取得）。実行ロールに §10.6 のポリシーを付与。
+3. 取得した runtime ARN を webhook の `AGENT_RUNTIME_ARN`（env か SSM）へ設定し `cdk deploy`（S3・IAM・webhook 更新）。
+4. LINE で配信済みカードの「グラフィカル解説」を押し、数十秒後に「📊 図解を開く」Push が届き HTML が開くことを確認（E2E）。
+5. モデル ID とリージョン（us-east-2 / `openai.gpt-5.5-*` の正確な ID）を Bedrock コンソールで確定し `EXPLAINER_MODEL_ID` に反映。
+
+### 10.9 Phase 2 の完了条件（DoD）
+plan.md「本 Phase の完了条件」と同一。今夜のコミット時点の完了条件は「2.1/2.2 のコード・テストが揃い pytest 緑・`cdk synth` 成功・PR 作成済み。実 launch/deploy と E2E は runbook として残す」。
+
