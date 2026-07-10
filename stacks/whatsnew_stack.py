@@ -215,11 +215,15 @@ class WhatsNewStack(Stack):
         )
         CfnOutput(self, "ExplainerViewerUrl", value=viewer_url.url)
 
-        # webhook → dispatcher Lambda(Event 非同期) の2段構え。
-        # 図解生成は数十秒かかり invoke 系は同期のため、webhook(60s)から直接やるとブロックして
-        # タイムアウト→LINE 再送→二重生成を招く。投げっぱなしできる dispatcher を挟み webhook を即応させる。
-        # v1 では dispatcher 自身が Bedrock(OpenAI)で HTML を生成し S3→presigned→Push する。
-        # （AgentCore Runtime は将来 MCP 深掘りが要る段で載せる。成果物は agent/ にある）
+        # webhook → dispatcher Lambda(Event 非同期) → AgentCore Runtime の2段構え。
+        # 図解生成(数十秒)は AgentCore Runtime(whatsnewExpl/・サーバレス)側で行う。invoke_agent_runtime
+        # は同期のため webhook(60s)から直接叩くとブロックする。投げっぱなしできる dispatcher を挟み、
+        # dispatcher が AgentCore を起動する（dispatcher は timeout 300s で完了を待つ）。
+        # 図解本体: DynamoDB記事 ＋ AWS Knowledge MCP ＋ Bedrock ＋ 私有S3 ＋ 閲覧Lambda ＋ LINE Push。
+        agent_runtime_arn = (
+            "arn:aws:bedrock-agentcore:us-east-1:"
+            f"{self.account}:runtime/whatsnewExpl_whatsnewExplainer-9WFmoq38Ne"
+        )
         explainer_dispatcher = lambda_.Function(
             self,
             "ExplainerDispatcher",
@@ -227,51 +231,14 @@ class WhatsNewStack(Stack):
             handler="agent_trigger.lambda_handler",
             code=lambda_.Code.from_asset("src"),
             timeout=Duration.seconds(300),
-            memory_size=512,
-            environment={
-                "TABLE_NAME": table.table_name,
-                "EXPLAINER_BUCKET": explainer_bucket.bucket_name,
-                # LINE に渡す短い閲覧 URL の土台（閲覧 Lambda の Function URL）
-                "EXPLAINER_VIEWER_URL": viewer_url.url,
-                # 既定は IAM だけで呼べる gpt-oss。GPT-5.5(us-east-2)へは env 差し替えで切替。
-                "EXPLAINER_MODEL_ID": "openai.gpt-oss-120b-1:0",
-                "EXPLAINER_BEDROCK_REGION": "us-east-1",
-                "LINE_TOKEN_PARAM": line_token_param,
-                "LINE_USER_ID_PARAM": line_user_id_param,
-            },
-        )
-        explainer_bucket.grant_read_write(explainer_dispatcher)
-        explainer_dispatcher.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["bedrock:InvokeModel"],
-                # GPT-5.5 は us-east-2、既定の gpt-oss は us-east-1。両リージョンの OpenAI 系を許可。
-                resources=[
-                    "arn:aws:bedrock:us-east-1::foundation-model/openai.*",
-                    "arn:aws:bedrock:us-east-2::foundation-model/openai.*",
-                ],
-            )
+            memory_size=256,
+            environment={"AGENT_RUNTIME_ARN": agent_runtime_arn},
         )
         explainer_dispatcher.add_to_role_policy(
             iam.PolicyStatement(
-                actions=["dynamodb:GetItem"],
-                resources=[table.table_arn],
-            )
-        )
-        explainer_dispatcher.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["ssm:GetParameter"],
-                resources=[
-                    self.format_arn(
-                        service="ssm",
-                        resource="parameter",
-                        resource_name=line_token_param.lstrip("/"),
-                    ),
-                    self.format_arn(
-                        service="ssm",
-                        resource="parameter",
-                        resource_name=line_user_id_param.lstrip("/"),
-                    ),
-                ],
+                actions=["bedrock-agentcore:InvokeAgentRuntime"],
+                # runtime 本体とそのエンドポイント sub-resource の両方を許可する。
+                resources=[agent_runtime_arn, f"{agent_runtime_arn}/*"],
             )
         )
         # webhook は dispatcher を非同期(Event)起動するだけ（即応のため）

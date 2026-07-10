@@ -218,15 +218,20 @@ def test_図解生成用の非同期dispatcher_Lambdaが作られる(
     )
 
 
-def test_dispatcherはOpenAIモデルのInvokeModel権限を持つ(
+def test_dispatcherはAgentCoreRuntimeを起動する権限を持つ(
     template_without_email: Template,
 ) -> None:
+    # 図解本体は AgentCore Runtime 側。dispatcher はそれを invoke するだけ。
     template_without_email.has_resource_properties(
         "AWS::IAM::Policy",
         {
             "PolicyDocument": {
                 "Statement": Match.array_with(
-                    [Match.object_like({"Action": "bedrock:InvokeModel"})]
+                    [
+                        Match.object_like(
+                            {"Action": "bedrock-agentcore:InvokeAgentRuntime"}
+                        )
+                    ]
                 )
             }
         },

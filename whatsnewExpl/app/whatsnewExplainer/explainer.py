@@ -30,18 +30,22 @@ DEFAULT_KEY_PREFIX = "explainer/"
 DEFAULT_LINE_TOKEN_PARAM = "/whatsnew-agent/line/channel_token"
 DEFAULT_LINE_USER_ID_PARAM = "/whatsnew-agent/line/user_id"
 
-# 原型（~/projects/aws-whatnew-visual/html_test/）で有効性を実測したプロンプト。
+# 原型（~/projects/aws-whatnew-visual/html_test/）で有効性を実測し、はみ出し対策を強化したプロンプト。
 HTML_SYSTEM_PROMPT = (
     "あなたは AWS の技術更新を1枚の図解にするデザイナーです。"
-    "与えられた AWS の更新内容を、グラフィカルに解説した1枚もののインフォグラフィックを、"
-    "自己完結型の HTML として出力してください。厳守事項:\n"
-    "- 出力は HTML のみ。前後に説明文やマークダウンのコードフェンス(```)を付けない。\n"
-    "- 外部 CSS/JS/画像/Webフォント/CDN を一切参照しない。アイコンや図形はすべてインライン SVG で描く。\n"
-    "- body 直下に幅1672px・高さ941px 固定の要素 .canvas を1つ置き、内容を必ずその中に収める"
-    "（はみ出し・見切れ厳禁。要素数や文字量はキャンバスに収まる範囲に調整する）。\n"
-    "- 情報設計: 大きなタイトルとサブタイトル / 入力→処理→ユースケースの流れ / 主要な特徴を"
-    "下部にバッジで並べる、など本文の要点を視覚的に整理する。\n"
-    "- 日本語は system-ui / sans-serif で崩れないようにする。"
+    "与えられた内容を、グラフィカルに解説した1枚もののインフォグラフィックを、自己完結型 HTML で出力してください。\n"
+    "【出力形式】出力は HTML のみ。前後に説明文やコードフェンス(```)を付けない。"
+    "外部 CSS/JS/画像/Webフォント/CDN を一切参照しない（アイコン・図形はインライン SVG）。\n"
+    "【キャンバス厳守・最重要】body 直下に <div class=\"canvas\"> を1つだけ置く。"
+    ".canvas には必ず width:1672px; height:941px; box-sizing:border-box; padding:56px; "
+    "overflow:hidden; position:relative; background:#fff; display:flex; flex-direction:column; "
+    "を指定し、全要素をこの中に収める。position:absolute は使わず、通常フロー(flex/grid)で縦に積む。"
+    "はみ出し・見切れは絶対禁止。収まらないなら要素数・文字量を削って必ず1画面に収める。\n"
+    "【レイアウト】上から順に: ①タイトル(font-size 44px前後・太字・濃紺#232F3E・1行に収める・長ければ縮小)"
+    "②サブタイトル(24px前後・灰色) ③本文の流れを 3〜4個のカードを横並び(display:flex; gap)で"
+    "(各カード=インラインSVGアイコン＋短い見出し＋1〜2行の説明) ④最下部に主要ポイントを最大4個の"
+    "バッジ(横並び)。カード/バッジの個数と文字量はこの枠に収まる範囲に必ず絞る。\n"
+    "【文字】日本語は system-ui / sans-serif。長い語は折り返す(word-break:break-word)。"
     "配色は白背景＋AWSオレンジ(#FF9900)のアクセント＋濃紺(#232F3E)の見出し。"
 )
 
