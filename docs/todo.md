@@ -46,7 +46,7 @@
 - [x] 2026-07-10 presigned URL 罠を解消: presigned は1682字で **LINE の URI ボタン上限(1000字)超過→400**。私有S3のまま **閲覧Lambda(Function URL)** が短いURL(`.../?id=<short_id>`)で配る方式に変更（公開バケットは作らない＝てつてつ判断B）
 - [ ] **実機ボタンテスト**: 既存カードにボタンが無いので、次の朝7時配信 or 手動再送のカードで「グラフィカル解説」タップ→Push を確認
 - [ ] 品質改善: ①description 付きカードで richに（実装済・新着から効く）②必要なら `EXPLAINER_MODEL_ID`/`EXPLAINER_BEDROCK_REGION` を GPT-5.5(us-east-2)へ ③HTML下端はみ出し等プロンプト調整
-- [x] 2026-07-11 **本来の AgentCore + MCP 構成を本番デプロイ・E2E成功**（whatsnewExpl/, commit cbe0346）: `agentcore create`→main.py に explainer/aws_mcp 移植→cdk-stack.ts に実行ロールIAM+env追記→`agentcore deploy`(サーバレス/CodeZip)成功。Runtime ARN=`arn:aws:bedrock-agentcore:us-east-1:522436770652:runtime/whatsnewExpl_whatsnewExplainer-9WFmoq38Ne`。invoke_agent_runtime で status=sent、MCP由来のAPI事実(BatchWriteRecord/Iceberg/Lake Formation)が図に反映を実証
+- [x] 2026-07-11 **本来の AgentCore + MCP 構成を本番デプロイ・E2E成功**（whatsnewExpl/, commit cbe0346）: `agentcore create`→main.py に explainer/aws_mcp 移植→cdk-stack.ts に実行ロールIAM+env追記→`agentcore deploy`(サーバレス/CodeZip)成功。Runtime ARN=`arn:aws:bedrock-agentcore:us-east-1:<ACCOUNT_ID>:runtime/whatsnewExpl_whatsnewExplainer-9WFmoq38Ne`。invoke_agent_runtime で status=sent、MCP由来のAPI事実(BatchWriteRecord/Iceberg/Lake Formation)が図に反映を実証
 - [x] 2026-07-11 **残1完了: ボタン→AgentCore の配線**（commit ec3e151）: dispatcher を invoke_agent_runtime へ戻し AGENT_RUNTIME_ARN env＋InvokeAgentRuntime 権限を付与→ cdk deploy 済。dispatcher 直接 invoke で dispatcher→AgentCore→図解→LINE Push を実証。ボタン付きテストカードも送信済（実機タップ確認待ち）
 - [x] 2026-07-11 **残2完了: HTMLレイアウト安定化**（commit ec3e151）: HTML_SYSTEM_PROMPT を強化（.canvas overflow:hidden/flex-column、position:absolute 禁止、要素数を枠に収める）→ agentcore deploy 再→本番で崩れ解消・3カード＋4バッジがきれいに収まるのを確認
 - [ ] **実機ボタンタップの最終確認**（てつてつ）: 送信済テストカードの「グラフィカル解説」を押し、数十秒後に図解が届くのを確認。以降の新着カードにも自動でボタンが付く

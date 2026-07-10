@@ -26,3 +26,6 @@ whatsnewExpl/**/node_modules/
 whatsnewExpl/**/cdk.out/
 whatsnewExpl/**/uv.lock
 whatsnewExpl/agentcore/.cli/
+
+# AgentCore deploy target (per-account, do not publish)
+whatsnewExpl/agentcore/aws-targets.json
