@@ -6,6 +6,7 @@ from aws_cdk import aws_cloudwatch_actions as cloudwatch_actions
 from aws_cdk import aws_dynamodb as dynamodb
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lambda_
+from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_scheduler as scheduler
 from aws_cdk import aws_sns as sns
 from aws_cdk import aws_sns_subscriptions as sns_subscriptions
@@ -180,6 +181,74 @@ class WhatsNewStack(Stack):
                 ],
             )
         )
+
+        # --- Phase2: 図解エージェント（dispatcher Lambda が生成 + S3 presigned 配信） ---
+        # 生成 HTML の置き場。presigned URL で配るので公開不要。7日で自動失効。
+        explainer_bucket = s3.Bucket(
+            self,
+            "ExplainerBucket",
+            # バケットは私有。閲覧用 Lambda(Function URL)が私有 S3 を短い URL で配る。
+            # presigned URL は1600文字超で LINE の URI 上限(1000)を超えるための回避策。7日で自動失効。
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+            lifecycle_rules=[
+                s3.LifecycleRule(expiration=Duration.days(7)),
+            ],
+        )
+
+        # 閲覧用 Lambda: GET /?id=<short_id> で私有 S3 の explainer/<id>.html を text/html で返す。
+        # LINE には presigned(長い)ではなくこの短い Function URL を渡す。
+        viewer = lambda_.Function(
+            self,
+            "ExplainerViewer",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="viewer.lambda_handler",
+            code=lambda_.Code.from_asset("src"),
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={"EXPLAINER_BUCKET": explainer_bucket.bucket_name},
+        )
+        explainer_bucket.grant_read(viewer)
+        viewer_url = viewer.add_function_url(
+            auth_type=lambda_.FunctionUrlAuthType.NONE,
+        )
+        CfnOutput(self, "ExplainerViewerUrl", value=viewer_url.url)
+
+        # webhook → dispatcher Lambda(Event 非同期) → AgentCore Runtime の2段構え。
+        # 図解生成(数十秒)は AgentCore Runtime(whatsnewExpl/・サーバレス)側で行う。invoke_agent_runtime
+        # は同期のため webhook(60s)から直接叩くとブロックする。投げっぱなしできる dispatcher を挟み、
+        # dispatcher が AgentCore を起動する（dispatcher は timeout 300s で完了を待つ）。
+        # 図解本体: DynamoDB記事 ＋ AWS Knowledge MCP ＋ Bedrock ＋ 私有S3 ＋ 閲覧Lambda ＋ LINE Push。
+        agent_runtime_arn = (
+            "arn:aws:bedrock-agentcore:us-east-1:"
+            f"{self.account}:runtime/whatsnewExpl_whatsnewExplainer-9WFmoq38Ne"
+        )
+        explainer_dispatcher = lambda_.Function(
+            self,
+            "ExplainerDispatcher",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="agent_trigger.lambda_handler",
+            code=lambda_.Code.from_asset("src"),
+            timeout=Duration.seconds(300),
+            memory_size=256,
+            environment={"AGENT_RUNTIME_ARN": agent_runtime_arn},
+        )
+        explainer_dispatcher.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["bedrock-agentcore:InvokeAgentRuntime"],
+                # runtime 本体とそのエンドポイント sub-resource の両方を許可する。
+                resources=[agent_runtime_arn, f"{agent_runtime_arn}/*"],
+            )
+        )
+        # webhook は dispatcher を非同期(Event)起動するだけ（即応のため）
+        webhook.add_environment(
+            "EXPLAINER_DISPATCHER_FUNCTION",
+            explainer_dispatcher.function_name,
+        )
+        explainer_dispatcher.grant_invoke(webhook)
+
+        CfnOutput(self, "ExplainerBucketName", value=explainer_bucket.bucket_name)
 
         scheduler_role = iam.Role(
             self,

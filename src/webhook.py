@@ -10,8 +10,9 @@ import logging
 import re
 
 try:
-    from . import filter_config, store
+    from . import agent_trigger, filter_config, store
 except ImportError:
+    import agent_trigger
     import filter_config
     import store
 
@@ -47,6 +48,7 @@ def handle_event(
     article_store: store.SentArticleStore | None = None,
     bedrock_client: Any | None = None,
     opener: Any | None = None,
+    trigger: Any | None = None,
 ) -> dict[str, Any]:
     app_config = app_config or _load_webhook_config()
     ssm_client = ssm_client or _ssm_client()
@@ -88,6 +90,7 @@ def handle_event(
                 bedrock_client,
                 token,
                 opener,
+                trigger,
             )
         except Exception as error:
             # 500 を返すと LINE が webhook を再送し、設定トグル等が
@@ -118,6 +121,7 @@ def _handle_line_event(
     bedrock_client: Any | None,
     token: str,
     opener: Any | None,
+    trigger: Any | None = None,
 ) -> None:
     reply_token = line_event.get("replyToken", "")
     if not reply_token:
@@ -132,6 +136,7 @@ def _handle_line_event(
             article_store,
             token,
             opener,
+            trigger,
         )
         return
 
@@ -189,9 +194,20 @@ def _handle_postback(
     article_store: store.SentArticleStore,
     token: str,
     opener: Any | None,
+    trigger: Any | None = None,
 ) -> None:
     values = parse.parse_qs(data)
     action = _first(values, "action")
+    if action == "explain":
+        _handle_explain(
+            _first(values, "sid"),
+            reply_token,
+            article_store,
+            token,
+            opener,
+            trigger,
+        )
+        return
     if action == "toggle":
         category_id = _first(values, "id")
         current = _load_filter_config(app_config, ssm_client)
@@ -234,6 +250,30 @@ def _handle_postback(
             ssm_client,
         )
         _reply(reply_token, token, [_text_message("カテゴリを追加しました")], opener)
+
+
+def _handle_explain(
+    short_id: str,
+    reply_token: str,
+    article_store: store.SentArticleStore,
+    token: str,
+    opener: Any | None,
+    trigger: Any | None,
+) -> None:
+    # 図解生成は数十秒かかるため webhook ではブロックしない。
+    # 「生成中」を即 reply し、AgentCore Runtime を非同期起動して結果は後から Push。
+    mapping = article_store.get_feedback_mapping(short_id)
+    if not mapping:
+        _reply(reply_token, token, [_text_message("対象の記事が見つかりません")], opener)
+        return
+    _reply(
+        reply_token,
+        token,
+        [_text_message("🎨 図解を生成中です。少しお待ちください。")],
+        opener,
+    )
+    invoke = trigger or agent_trigger.dispatch_async
+    invoke(short_id)
 
 
 def _record_dislike(
