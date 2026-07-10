@@ -1,6 +1,9 @@
 # knowledge.md — aws-whatsnew-agent
 
 ## 決定事項
+- 2026-07-11: **図解モデルを Claude Sonnet 4.6 に決定**（gpt-oss は情報量が薄く役に立たない・英語混在とてつてつ指摘）。**GPT-5.5 はこのアカウントの Bedrock に未提供**（全リージョン gpt-oss 系のみ、`openai.gpt-5.5-*` は invalid）。図解の密度・品質は Claude が突出。`us.anthropic.claude-sonnet-4-6`（us-east-1 推論プロファイル、IAM は inference-profile ＋ 各リージョン foundation-model の両 ARN が要る）。品質は参考画像（ChatGPT製）と同等：ヘッダー＋特徴6＋動作フロー＋アーキ図＋API比較表＋利用シーン/主な機能/メリット。
+- 2026-07-11: **HTML は縦に伸ばす前提でプロンプトを組む**（PNGと違い1画面に収める必要がない）。「1画面に収める・要素削る」制約が薄さの主因だった。密度重視・多セクション・日本語固定に刷新。maxTokens 4000→16000（密な図が途中で切れないように）。
+- 2026-07-11: **Claude 密生成は約165秒 → read_timeout 対策が必須**。既定 read_timeout(60s) だとタイムアウト→botocore リトライで多重生成＆失敗（CloudWatch で `ReadTimeoutError on .../claude-sonnet-4-6/converse`、308秒で error を確定）。explainer の bedrock-runtime に read_timeout=300、**dispatcher の bedrock-agentcore クライアントにも read_timeout=290**（AgentCore の完了を待つため）、両方 retries=1。dispatcher Lambda timeout=300s 内に収まる。
 - 2026-07-11: **本来の AgentCore + MCP 構成に戻す**（Lambda v1 は非推奨警告に引きずられた縮小版だったとてつてつが指摘）。検証済み事実を docs/agentcore-plan.md に集約。要点: **AgentCore Runtime はサーバレス・ビルド既定 CodeZip（Docker/ECR 不要）**＝「コンテナ必須/重い」は私の誤り。正式 CLI は npm の `@aws/agentcore`（`agentcore create`→`deploy`、CDKベース）。雛形は Strands+MCPクライアント込み。
 - 2026-07-11: **AWS Knowledge MCP は自前コードから直接叩ける**（認証不要）。エンドポイントは **ベース URL `https://knowledge-mcp.global.api.aws`**。**`/mcp` を付けると tool-call が「Http operation is not supported for gateway protocol type MCP」で 400**（initialize/tools-list は通るが call が落ちる罠）。ツール `aws___search_documentation`(search_phrase必須)/`aws___read_documentation`(requests:[{url}])。実装 src/aws_mcp.py（公式mcpクライアント・遅延import・runner注入でテスト、pytest 4件）。
 - 2026-07-11: **MCP 富化の効果を実証**。SageMaker Feature Store で薄い図の埋め草が MCP 由来の API 事実（BatchWriteRecord/list_records/TTL自動削除/TargetStores）に置換され正確化。MCP 富化は **依存管理のある AgentCore CodeZip 側に置く**（stdlibのみの現行Lambda from_asset("src")には mcp 同梱不可のため。MCP は AgentCore 移行とセット）。
