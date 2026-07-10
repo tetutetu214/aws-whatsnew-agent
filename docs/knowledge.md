@@ -1,6 +1,9 @@
 # knowledge.md — aws-whatsnew-agent
 
 ## 決定事項
+- 2026-07-11: **本来の AgentCore + MCP 構成に戻す**（Lambda v1 は非推奨警告に引きずられた縮小版だったとてつてつが指摘）。検証済み事実を docs/agentcore-plan.md に集約。要点: **AgentCore Runtime はサーバレス・ビルド既定 CodeZip（Docker/ECR 不要）**＝「コンテナ必須/重い」は私の誤り。正式 CLI は npm の `@aws/agentcore`（`agentcore create`→`deploy`、CDKベース）。雛形は Strands+MCPクライアント込み。
+- 2026-07-11: **AWS Knowledge MCP は自前コードから直接叩ける**（認証不要）。エンドポイントは **ベース URL `https://knowledge-mcp.global.api.aws`**。**`/mcp` を付けると tool-call が「Http operation is not supported for gateway protocol type MCP」で 400**（initialize/tools-list は通るが call が落ちる罠）。ツール `aws___search_documentation`(search_phrase必須)/`aws___read_documentation`(requests:[{url}])。実装 src/aws_mcp.py（公式mcpクライアント・遅延import・runner注入でテスト、pytest 4件）。
+- 2026-07-11: **MCP 富化の効果を実証**。SageMaker Feature Store で薄い図の埋め草が MCP 由来の API 事実（BatchWriteRecord/list_records/TTL自動削除/TargetStores）に置換され正確化。MCP 富化は **依存管理のある AgentCore CodeZip 側に置く**（stdlibのみの現行Lambda from_asset("src")には mcp 同梱不可のため。MCP は AgentCore 移行とセット）。
 - 2026-07-10: **本番稼働開始（バックエンドE2E成功）**。方針を AgentCore→C案に変更: AgentCore の starter-toolkit CLI が非推奨化（新CLIは @aws/agentcore）していたため、てつてつ判断で **v1 は AgentCore を挟まず dispatcher Lambda が直接 explainer.generate_explainer を実行**。AgentCore は将来 MCP 深掘りが要る段で載せる（agent/ に成果物残置）。gpt-oss-120b は **us-east-1・IAM のみで動作**（bedrock:InvokeModel の foundation-model/openai.* で通る＝推論プロファイル不要を実証）。dispatcher 直接 invoke で status=sent を確認。
 - 2026-07-10: **presigned URL は LINE で使えない**。presigned は SigV4 で1682字になり **LINE の URI ボタン上限(1000字)を超えて 400 Bad Request**。→ 私有 S3 のまま **閲覧 Lambda(Function URL)** を1個立て、`GET /?id=<short_id>` で私有オブジェクトを text/html で返す短いURL(85字)で配る方式に変更（公開バケットは作らない＝てつてつ判断B。id は `[0-9a-f]{1,64}` 限定でキーinjection防止）。plan/spec の「presigned で配る」記述はこれで置換。
 - 2026-07-10: gpt-oss-120b の図解は動作するが原型(gpt-5.5)より簡素。入力が title だけだと内容が薄く一部一般化される。→ feedback mapping に description を保存し新着カードから richに。GPT-5.5(us-east-2)へは EXPLAINER_MODEL_ID/REGION の env 差し替えで切替可。

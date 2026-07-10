@@ -46,4 +46,5 @@
 - [x] 2026-07-10 presigned URL 罠を解消: presigned は1682字で **LINE の URI ボタン上限(1000字)超過→400**。私有S3のまま **閲覧Lambda(Function URL)** が短いURL(`.../?id=<short_id>`)で配る方式に変更（公開バケットは作らない＝てつてつ判断B）
 - [ ] **実機ボタンテスト**: 既存カードにボタンが無いので、次の朝7時配信 or 手動再送のカードで「グラフィカル解説」タップ→Push を確認
 - [ ] 品質改善: ①description 付きカードで richに（実装済・新着から効く）②必要なら `EXPLAINER_MODEL_ID`/`EXPLAINER_BEDROCK_REGION` を GPT-5.5(us-east-2)へ ③HTML下端はみ出し等プロンプト調整
-- [ ] AWS Knowledge MCP の本番接続（explainer の mcp_call 注入。未接続時は description フォールバックで動作）
+- [ ] **【最優先・要 aws login＋deploy承認】本来の AgentCore + MCP 構成に移行**（docs/agentcore-plan.md が正・検証済み）: `agentcore create`(npm CLI) で雛形→ main.py に explainer/aws_mcp ロジック移植・mcp_client を `https://knowledge-mcp.global.api.aws` へ→ `agentcore dev` でローカル確認→ `agentcore deploy`(サーバレス/CodeZip・本番承認要)→ dispatcher を invoke_agent_runtime へ戻す→ 実機E2E。※AgentCore=サーバレス/CodeZip でコンテナ不要、MCPエンドポイントは /mcp 無しのベースURL、が検証済み
+- [x] 2026-07-11 検証・実装（AgentCore移行の地ならし）: AgentCore が serverless/CodeZip と実証・雛形生成確認 / AWS Knowledge MCP を自前コードから実データ取得成功(base URL) / MCP富化で図が正確化するのを実証 / `src/aws_mcp.py`+テスト4件
