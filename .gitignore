@@ -19,3 +19,10 @@ cdk.context.json
 
 # misc
 .DS_Store
+
+# AgentCore project generated/heavy dirs
+whatsnewExpl/**/.venv/
+whatsnewExpl/**/node_modules/
+whatsnewExpl/**/cdk.out/
+whatsnewExpl/**/uv.lock
+whatsnewExpl/agentcore/.cli/
