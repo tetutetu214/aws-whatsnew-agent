@@ -66,8 +66,14 @@ def invoke_agent_runtime(
         return
     if client is None:
         import boto3
+        from botocore.config import Config
 
-        client = boto3.client("bedrock-agentcore")
+        # AgentCore の図解生成は数分かかる。dispatcher(Lambda timeout 300s)内で待てるよう
+        # read_timeout を長く取り、リトライ無しで多重起動を防ぐ。
+        client = boto3.client(
+            "bedrock-agentcore",
+            config=Config(read_timeout=290, connect_timeout=15, retries={"max_attempts": 1}),
+        )
     # AgentCore は 33 文字以上のセッション ID を要求。生成ごとに独立セッションにする。
     session_id = f"whatsnew-{short_id}-{uuid.uuid4().hex}"[:64]
     client.invoke_agent_runtime(

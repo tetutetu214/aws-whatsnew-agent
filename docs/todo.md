@@ -47,6 +47,8 @@
 - [ ] **実機ボタンテスト**: 既存カードにボタンが無いので、次の朝7時配信 or 手動再送のカードで「グラフィカル解説」タップ→Push を確認
 - [ ] 品質改善: ①description 付きカードで richに（実装済・新着から効く）②必要なら `EXPLAINER_MODEL_ID`/`EXPLAINER_BEDROCK_REGION` を GPT-5.5(us-east-2)へ ③HTML下端はみ出し等プロンプト調整
 - [x] 2026-07-11 **本来の AgentCore + MCP 構成を本番デプロイ・E2E成功**（whatsnewExpl/, commit cbe0346）: `agentcore create`→main.py に explainer/aws_mcp 移植→cdk-stack.ts に実行ロールIAM+env追記→`agentcore deploy`(サーバレス/CodeZip)成功。Runtime ARN=`arn:aws:bedrock-agentcore:us-east-1:522436770652:runtime/whatsnewExpl_whatsnewExplainer-9WFmoq38Ne`。invoke_agent_runtime で status=sent、MCP由来のAPI事実(BatchWriteRecord/Iceberg/Lake Formation)が図に反映を実証
-- [ ] **残1: ボタン→AgentCore の配線**: dispatcher(agent_trigger.lambda_handler) を「generate_explainer 直接」から invoke_agent_runtime(AGENT_RUNTIME_ARN) へ戻す＋env＋bedrock-agentcore:InvokeAgentRuntime 権限→ AwsWhatsNewAgentStack 再デプロイ(承認要)。現状ボタンはまだ Lambda v1 直実行
-- [ ] **残2: HTMLレイアウトのはみ出し修正**: gpt-oss が1672×941を守らず崩れる生成あり。HTML_SYSTEM_PROMPT を締める(overflow:hidden/要素数制限/必ず収める)→ agentcore deploy 再→再検証。GPT-5.5(us-east-2)切替も選択肢
+- [x] 2026-07-11 **残1完了: ボタン→AgentCore の配線**（commit ec3e151）: dispatcher を invoke_agent_runtime へ戻し AGENT_RUNTIME_ARN env＋InvokeAgentRuntime 権限を付与→ cdk deploy 済。dispatcher 直接 invoke で dispatcher→AgentCore→図解→LINE Push を実証。ボタン付きテストカードも送信済（実機タップ確認待ち）
+- [x] 2026-07-11 **残2完了: HTMLレイアウト安定化**（commit ec3e151）: HTML_SYSTEM_PROMPT を強化（.canvas overflow:hidden/flex-column、position:absolute 禁止、要素数を枠に収める）→ agentcore deploy 再→本番で崩れ解消・3カード＋4バッジがきれいに収まるのを確認
+- [ ] **実機ボタンタップの最終確認**（てつてつ）: 送信済テストカードの「グラフィカル解説」を押し、数十秒後に図解が届くのを確認。以降の新着カードにも自動でボタンが付く
+- [ ] 品質のさらなる向上（任意）: GPT-5.5(us-east-2)への切替、下部の余白調整、AWS MCP の read_documentation 併用でさらに深い情報
 - [x] 2026-07-11 検証・実装（AgentCore移行の地ならし）: AgentCore が serverless/CodeZip と実証・雛形生成確認 / AWS Knowledge MCP を自前コードから実データ取得成功(base URL) / MCP富化で図が正確化するのを実証 / `src/aws_mcp.py`+テスト4件

@@ -22,31 +22,36 @@ except ImportError:
 
 LOGGER = logging.getLogger(__name__)
 
-# 確実に存在し IAM だけで呼べる OpenAI モデル（text-out）を既定にする。
-# GPT-5.5（openai.gpt-5.5-*, us-east-2）へは EXPLAINER_MODEL_ID / EXPLAINER_BEDROCK_REGION で切替。
-DEFAULT_EXPLAINER_MODEL_ID = "openai.gpt-oss-120b-1:0"
+# 図解の密度・品質は Claude が突出（GPT-5.5 はこのアカウントの Bedrock 未提供、gpt-oss は情報量が薄い）。
+# 既定を Claude Sonnet 4.6（us-east-1 推論プロファイル）にする。EXPLAINER_MODEL_ID で切替可。
+DEFAULT_EXPLAINER_MODEL_ID = "us.anthropic.claude-sonnet-4-6"
 DEFAULT_EXPLAINER_REGION = "us-east-1"
 DEFAULT_KEY_PREFIX = "explainer/"
 DEFAULT_LINE_TOKEN_PARAM = "/whatsnew-agent/line/channel_token"
 DEFAULT_LINE_USER_ID_PARAM = "/whatsnew-agent/line/user_id"
 
-# 原型（~/projects/aws-whatnew-visual/html_test/）で有効性を実測し、はみ出し対策を強化したプロンプト。
+# AWS 公式ポスター級の密度を狙うプロンプト。HTML は縦に伸ばせるので「1画面に収める」で削らない。
 HTML_SYSTEM_PROMPT = (
-    "あなたは AWS の技術更新を1枚の図解にするデザイナーです。"
-    "与えられた内容を、グラフィカルに解説した1枚もののインフォグラフィックを、自己完結型 HTML で出力してください。\n"
-    "【出力形式】出力は HTML のみ。前後に説明文やコードフェンス(```)を付けない。"
-    "外部 CSS/JS/画像/Webフォント/CDN を一切参照しない（アイコン・図形はインライン SVG）。\n"
-    "【キャンバス厳守・最重要】body 直下に <div class=\"canvas\"> を1つだけ置く。"
-    ".canvas には必ず width:1672px; height:941px; box-sizing:border-box; padding:56px; "
-    "overflow:hidden; position:relative; background:#fff; display:flex; flex-direction:column; "
-    "を指定し、全要素をこの中に収める。position:absolute は使わず、通常フロー(flex/grid)で縦に積む。"
-    "はみ出し・見切れは絶対禁止。収まらないなら要素数・文字量を削って必ず1画面に収める。\n"
-    "【レイアウト】上から順に: ①タイトル(font-size 44px前後・太字・濃紺#232F3E・1行に収める・長ければ縮小)"
-    "②サブタイトル(24px前後・灰色) ③本文の流れを 3〜4個のカードを横並び(display:flex; gap)で"
-    "(各カード=インラインSVGアイコン＋短い見出し＋1〜2行の説明) ④最下部に主要ポイントを最大4個の"
-    "バッジ(横並び)。カード/バッジの個数と文字量はこの枠に収まる範囲に必ず絞る。\n"
-    "【文字】日本語は system-ui / sans-serif。長い語は折り返す(word-break:break-word)。"
-    "配色は白背景＋AWSオレンジ(#FF9900)のアクセント＋濃紺(#232F3E)の見出し。"
+    "あなたは AWS の新機能を、日本語で、プロ品質の1枚インフォグラフィックにするデザイナーです。"
+    "与えられた本文とサービス情報から、情報量の多い自己完結 HTML を作ってください。\n"
+    "【言語】すべて日本語で書く。英語の語句・文は日本語に訳す（固有名詞・API名・製品名・技術名は原語のままでよい）。\n"
+    "【出力形式】出力は HTML のみ。コードフェンス(```)や前後の説明文を付けない。"
+    "外部 CSS/JS/画像/Webフォント/CDN を一切参照しない（アイコン・図形・矢印はインライン SVG で描く）。\n"
+    "【キャンバス】body 直下に <div class=\"canvas\"> を1つ置く。"
+    "width:1600px; margin:0 auto; padding:48px; box-sizing:border-box; background:#fff; とし、"
+    "高さは内容に応じて縦に伸ばす（固定高・overflow:hidden にしない。縦に長くなってよい）。"
+    "横スクロールは禁止（全要素を幅1600px内に収める）。\n"
+    "【密度・最重要】参考は AWS 公式の詳細な1枚解説ポスター。スカスカ厳禁。本文の要点を漏れなく盛り込み、"
+    "各セクションを充実させる。最低でも次を入れる:\n"
+    "  ① ヘッダー: 大タイトル＋短いタグライン(例『安全・状態保持・サーバーレス』)＋2〜3行の概要。\n"
+    "  ② 特徴ハイライト: アイコン付きで4〜6項目(各=見出し＋1〜2行説明)。\n"
+    "  ③ 動作の流れ: 番号付きステップ4〜7個を矢印でつなぐ横フロー図(各=SVGアイコン＋見出し＋短い説明)。\n"
+    "  ④ アーキテクチャ/仕組み: 主要コンポーネントの関係を箱と矢印で図示。\n"
+    "  ⑤ 下部に3グリッド『利用シーン』『主な機能』『メリット』を各3〜6項目、アイコン付きカードで。\n"
+    "内容が足りなければ本文・サービス情報から具体を補う。ただし事実に反することは書かない。\n"
+    "【デザイン】白背景＋AWSオレンジ#FF9900のアクセント＋濃紺#232F3Eの見出し＋淡いグレーの枠/カード。"
+    "角丸・余白・整列を効かせ、各セクションに見出しを付けて視認性を高く。SVGアイコンは単色ラインで統一。"
+    "日本語は system-ui / sans-serif、長い語は折り返す(word-break:break-word)。"
 )
 
 
@@ -108,7 +113,7 @@ def build_html(
         modelId=model_id,
         system=[{"text": HTML_SYSTEM_PROMPT}],
         messages=[{"role": "user", "content": [{"text": user_text}]}],
-        inferenceConfig={"maxTokens": 4000, "temperature": 0.4},
+        inferenceConfig={"maxTokens": 16000, "temperature": 0.4},
     )
     return _strip_code_fence(_extract_text(response))
 
@@ -268,8 +273,15 @@ def _load_line_secrets(token_param: str, user_id_param: str) -> tuple[str, str]:
 
 def _bedrock_client(region: str) -> Any:
     import boto3
+    from botocore.config import Config
 
-    return boto3.client("bedrock-runtime", region_name=region)
+    # 密度の高い図解生成(Claude, 数万字)は 2〜3 分かかる。既定 read_timeout(60s) だと
+    # タイムアウト→リトライで多重生成・失敗になるため、長い read_timeout＋リトライ無しにする。
+    return boto3.client(
+        "bedrock-runtime",
+        region_name=region,
+        config=Config(read_timeout=300, connect_timeout=15, retries={"max_attempts": 1}),
+    )
 
 
 def _s3_client() -> Any:

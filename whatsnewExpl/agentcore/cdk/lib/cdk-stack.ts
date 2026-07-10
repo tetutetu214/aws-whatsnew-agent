@@ -126,7 +126,13 @@ export class AgentCoreStack extends Stack {
       role.addToPrincipalPolicy(
         new iam.PolicyStatement({
           actions: ['bedrock:InvokeModel'],
-          resources: [`arn:aws:bedrock:${this.region}::foundation-model/openai.*`],
+          // Claude(既定・us. 推論プロファイル)は profile ARN と各リージョンの FM ARN 双方が要る。
+          // OpenAI(gpt-oss)にも切替できるよう両系統を許可。
+          resources: [
+            `arn:aws:bedrock:*::foundation-model/anthropic.*`,
+            `arn:aws:bedrock:*:${this.account}:inference-profile/us.anthropic.*`,
+            `arn:aws:bedrock:*::foundation-model/openai.*`,
+          ],
         })
       );
       role.addToPrincipalPolicy(
@@ -150,7 +156,7 @@ export class AgentCoreStack extends Stack {
       env.runtime.addEnvironmentVariable('TABLE_NAME', 'aws-whatsnew-agent-sent');
       env.runtime.addEnvironmentVariable('EXPLAINER_BUCKET', explBucket);
       env.runtime.addEnvironmentVariable('EXPLAINER_VIEWER_URL', viewerUrl);
-      env.runtime.addEnvironmentVariable('EXPLAINER_MODEL_ID', 'openai.gpt-oss-120b-1:0');
+      env.runtime.addEnvironmentVariable('EXPLAINER_MODEL_ID', 'us.anthropic.claude-sonnet-4-6');
       env.runtime.addEnvironmentVariable('EXPLAINER_BEDROCK_REGION', 'us-east-1');
       env.runtime.addEnvironmentVariable('LINE_TOKEN_PARAM', lineTokenParam);
       env.runtime.addEnvironmentVariable('LINE_USER_ID_PARAM', lineUserParam);
