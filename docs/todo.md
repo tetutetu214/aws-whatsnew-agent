@@ -41,10 +41,9 @@
 - [x] 2026-07-09 設計: plan.md Phase 2 実体化 / spec.md §10 追記
 - [x] 2026-07-09 実装（2.1+2.2）: Flexにボタン追加 / webhook explain分岐＋非同期trigger(agent_trigger.py) / explainer.py（記事→HTML→S3→presigned→Push）/ feedback mapping に description・link 追加 / AgentCore Runtime成果物(agent/agent_runtime.py・Dockerfile・requirements) / CDK(S3・実行ロール・InvokeAgentRuntime権限)
 - [x] 2026-07-09 ローカル検収＋レビュー反映: reviewer 監査で blocking 1件（invoke_agent_runtime が同期でwebhookをブロック）を検出 → **webhook→dispatcher Lambda(Event)→AgentCore の2段非同期**に修正。例外スコープ・テスト強化も反映。pytest 78件パス / cdk synth 成功。デプロイ前の要確認5点は spec.md §10.10
-- [ ] **【要 aws login・てつてつ起床後】2.3 デプロイ＆E2E**（spec.md §10.8 runbook）:
-  1. `cd agent && agentcore configure --entrypoint agent_runtime.py && agentcore launch`（実行ロールに ExplainerAgentRole 相当を指定／CfnOutput参照）
-  2. 取得した runtime ARN を webhook env `AGENT_RUNTIME_ARN` に設定 → `cdk deploy`
-  3. LINE の配信済みカードで「グラフィカル解説」を押し、数十秒後に「📊 図解を開く」Pushが届きHTMLが開くことを確認
-  4. `EXPLAINER_MODEL_ID`/`EXPLAINER_BEDROCK_REGION` を GPT-5.5(us-east-2, openai.gpt-5.5-* の正確なID)に切替（既定は gpt-oss-120b/us-east-1 で稼働）
-- [ ] 2.3 後: 生成HTMLの下端はみ出し等プロンプト/レイアウト調整（原型検証で確認済の課題）
-- [ ] AWS Knowledge MCP の本番接続（agent側で mcp_call を注入。未接続時は description フォールバックで動作）
+- [x] 2026-07-10 方針変更（AgentCore→C案）: AgentCore starter-toolkit が非推奨化していたため、てつてつ判断で **v1 は AgentCore を挟まず dispatcher Lambda が直接 generate_explainer を実行**する構成に変更（AgentCore は将来 MCP 深掘りが要る段で。agent/ に成果物は残置）
+- [x] 2026-07-10 本番デプロイ＆バックエンドE2E成功: `cdk deploy` 済（ExplainerBucket・ExplainerDispatcher・ExplainerViewer + Function URL）。dispatcher 直接 invoke で status=sent、viewer URL(85字) が HTTP200/text/html で図解を返し LINE Push まで到達。gpt-oss-120b は us-east-1・IAM のみで動作（推論プロファイル不要を実証）
+- [x] 2026-07-10 presigned URL 罠を解消: presigned は1682字で **LINE の URI ボタン上限(1000字)超過→400**。私有S3のまま **閲覧Lambda(Function URL)** が短いURL(`.../?id=<short_id>`)で配る方式に変更（公開バケットは作らない＝てつてつ判断B）
+- [ ] **実機ボタンテスト**: 既存カードにボタンが無いので、次の朝7時配信 or 手動再送のカードで「グラフィカル解説」タップ→Push を確認
+- [ ] 品質改善: ①description 付きカードで richに（実装済・新着から効く）②必要なら `EXPLAINER_MODEL_ID`/`EXPLAINER_BEDROCK_REGION` を GPT-5.5(us-east-2)へ ③HTML下端はみ出し等プロンプト調整
+- [ ] AWS Knowledge MCP の本番接続（explainer の mcp_call 注入。未接続時は description フォールバックで動作）

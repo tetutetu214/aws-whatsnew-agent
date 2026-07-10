@@ -10,8 +10,8 @@ from src import explainer
 from src.explainer import (
     ExplainerConfig,
     build_html,
+    build_viewer_url,
     generate_explainer,
-    presign,
     store_html,
 )
 
@@ -35,20 +35,9 @@ class FailingBedrock:
 class FakeS3:
     def __init__(self) -> None:
         self.put_calls: list[dict[str, object]] = []
-        self.presign_ops: list[str] = []
 
     def put_object(self, **kwargs: object) -> None:
         self.put_calls.append(kwargs)
-
-    def generate_presigned_url(
-        self,
-        operation: str,
-        Params: dict[str, str],
-        ExpiresIn: int,
-    ) -> str:
-        del ExpiresIn
-        self.presign_ops.append(operation)
-        return f"https://signed.example/{Params['Key']}"
 
 
 class FakeStore:
@@ -86,7 +75,11 @@ def _secrets(token_param: str, user_id_param: str) -> tuple[str, str]:
 
 
 def _config() -> ExplainerConfig:
-    return ExplainerConfig(bucket="bucket", model_id="model-x")
+    return ExplainerConfig(
+        bucket="bucket",
+        model_id="model-x",
+        viewer_base_url="https://viewer.example/",
+    )
 
 
 def _mapping() -> dict[str, str]:
@@ -124,13 +117,11 @@ def test_store_htmlはtext_htmlのContentTypeで指定バケットにputする()
     assert s3.put_calls[0]["Key"] == "explainer/a.html"
 
 
-def test_presignはget_objectの署名URLを返す() -> None:
-    s3 = FakeS3()
+def test_build_viewer_urlは閲覧LambdaのidつきURLを返す() -> None:
+    # presigned は1600文字超で LINE の URI 上限を超えるため私有S3を返す閲覧Lambdaの短いURLを使う
+    url = build_viewer_url("https://v.lambda-url.us-east-1.on.aws/", "abc123")
 
-    url = presign(s3, "bucket", "explainer/a.html", 3600)
-
-    assert url == "https://signed.example/explainer/a.html"
-    assert s3.presign_ops == ["get_object"]
+    assert url == "https://v.lambda-url.us-east-1.on.aws/?id=abc123"
 
 
 def test_generate_explainerは図解を作りpresignedリンクをPushする() -> None:
@@ -152,7 +143,7 @@ def test_generate_explainerは図解を作りpresignedリンクをPushする() -
     assert s3.put_calls[0]["Key"] == "explainer/abc123.html"
     pushed = json.loads(opener.requests[0].data.decode("utf-8"))
     button = pushed["messages"][0]["contents"]["footer"]["contents"][0]["action"]
-    assert button["uri"] == "https://signed.example/explainer/abc123.html"
+    assert button["uri"] == "https://viewer.example/?id=abc123"
 
 
 def test_generate_explainerはBedrock失敗時に失敗メッセージをPushする() -> None:

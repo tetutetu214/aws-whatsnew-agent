@@ -176,16 +176,12 @@ def test_SettingsWebhookはwebhook_handlerで作られる(
     )
 
 
-def test_Phase2の図解HTML用S3バケットが作られる(
+def test_Phase2の図解HTML用S3バケットは7日失効で作られる(
     template_without_email: Template,
 ) -> None:
-    # presigned で配るので公開ブロック、7日で自動失効。
     template_without_email.has_resource_properties(
         "AWS::S3::Bucket",
         {
-            "PublicAccessBlockConfiguration": Match.object_like(
-                {"BlockPublicPolicy": True}
-            ),
             "LifecycleConfiguration": Match.object_like(
                 {
                     "Rules": Match.array_with(
@@ -197,11 +193,22 @@ def test_Phase2の図解HTML用S3バケットが作られる(
     )
 
 
-def test_dispatcherがAgentCoreRuntimeを起動する非同期Lambdaとして作られる(
+def test_図解閲覧用のFunctionURL_Lambdaが作られる(
     template_without_email: Template,
 ) -> None:
-    # webhook(60s) から invoke_agent_runtime を直叩きするとブロックするため、
-    # 投げっぱなしできる dispatcher Lambda を挟む。
+    # 私有 S3 を短い URL で配るための閲覧 Lambda（presigned が長すぎる回避策）。
+    template_without_email.has_resource_properties(
+        "AWS::Lambda::Function",
+        {"Handler": "viewer.lambda_handler"},
+    )
+    # webhook と viewer の2つの Function URL がある
+    template_without_email.resource_count_is("AWS::Lambda::Url", 2)
+
+
+def test_図解生成用の非同期dispatcher_Lambdaが作られる(
+    template_without_email: Template,
+) -> None:
+    # webhook(60s) から同期実行するとブロックするため、投げっぱなしできる dispatcher を挟む。
     template_without_email.has_resource_properties(
         "AWS::Lambda::Function",
         {
@@ -211,7 +218,7 @@ def test_dispatcherがAgentCoreRuntimeを起動する非同期Lambdaとして作
     )
 
 
-def test_AgentCoreRuntime起動権限はdispatcher側にある(
+def test_dispatcherはOpenAIモデルのInvokeModel権限を持つ(
     template_without_email: Template,
 ) -> None:
     template_without_email.has_resource_properties(
@@ -219,11 +226,7 @@ def test_AgentCoreRuntime起動権限はdispatcher側にある(
         {
             "PolicyDocument": {
                 "Statement": Match.array_with(
-                    [
-                        Match.object_like(
-                            {"Action": "bedrock-agentcore:InvokeAgentRuntime"}
-                        )
-                    ]
+                    [Match.object_like({"Action": "bedrock:InvokeModel"})]
                 )
             }
         },

@@ -27,7 +27,6 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_EXPLAINER_MODEL_ID = "openai.gpt-oss-120b-1:0"
 DEFAULT_EXPLAINER_REGION = "us-east-1"
 DEFAULT_KEY_PREFIX = "explainer/"
-DEFAULT_PRESIGN_EXPIRY = 3600
 DEFAULT_LINE_TOKEN_PARAM = "/whatsnew-agent/line/channel_token"
 DEFAULT_LINE_USER_ID_PARAM = "/whatsnew-agent/line/user_id"
 
@@ -52,7 +51,7 @@ class ExplainerConfig:
     bucket: str
     model_id: str = DEFAULT_EXPLAINER_MODEL_ID
     bedrock_region: str = DEFAULT_EXPLAINER_REGION
-    presign_expiry_seconds: int = DEFAULT_PRESIGN_EXPIRY
+    viewer_base_url: str = ""
     key_prefix: str = DEFAULT_KEY_PREFIX
     line_token_param: str = DEFAULT_LINE_TOKEN_PARAM
     line_user_id_param: str = DEFAULT_LINE_USER_ID_PARAM
@@ -64,9 +63,7 @@ def load_explainer_config(environ: dict[str, str] | None = None) -> ExplainerCon
         bucket=values.get("EXPLAINER_BUCKET", ""),
         model_id=values.get("EXPLAINER_MODEL_ID", DEFAULT_EXPLAINER_MODEL_ID),
         bedrock_region=values.get("EXPLAINER_BEDROCK_REGION", DEFAULT_EXPLAINER_REGION),
-        presign_expiry_seconds=int(
-            values.get("EXPLAINER_PRESIGN_EXPIRY", str(DEFAULT_PRESIGN_EXPIRY))
-        ),
+        viewer_base_url=values.get("EXPLAINER_VIEWER_URL", ""),
         key_prefix=values.get("EXPLAINER_KEY_PREFIX", DEFAULT_KEY_PREFIX),
         line_token_param=values.get("LINE_TOKEN_PARAM", DEFAULT_LINE_TOKEN_PARAM),
         line_user_id_param=values.get("LINE_USER_ID_PARAM", DEFAULT_LINE_USER_ID_PARAM),
@@ -121,12 +118,11 @@ def store_html(html: str, s3_client: Any, bucket: str, key: str) -> None:
     )
 
 
-def presign(s3_client: Any, bucket: str, key: str, expires: int) -> str:
-    return s3_client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=expires,
-    )
+def build_viewer_url(base_url: str, short_id: str) -> str:
+    # presigned URL は SigV4 で1600文字超になり LINE の URI 上限(1000)を超える。
+    # バケットは私有のままにし、閲覧用 Lambda(Function URL) が私有 S3 の HTML を返す。
+    # LINE に渡すのはその短い URL（例: https://xxx.lambda-url.../?id=<short_id>）。
+    return f"{base_url}?id={short_id}"
 
 
 def build_link_message(url: str, title: str) -> dict[str, Any]:
@@ -215,9 +211,7 @@ def generate_explainer(
 
         key = f"{config.key_prefix}{short_id}.html"
         store_html(html, s3_client, config.bucket, key)
-        url = presign(
-            s3_client, config.bucket, key, config.presign_expiry_seconds
-        )
+        url = build_viewer_url(config.viewer_base_url, short_id)
         line.push_messages(
             user_id,
             token,

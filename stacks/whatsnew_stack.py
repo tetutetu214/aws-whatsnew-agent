@@ -182,11 +182,13 @@ class WhatsNewStack(Stack):
             )
         )
 
-        # --- Phase2: 図解エージェント（AgentCore Runtime + S3 presigned 配信） ---
+        # --- Phase2: 図解エージェント（dispatcher Lambda が生成 + S3 presigned 配信） ---
         # 生成 HTML の置き場。presigned URL で配るので公開不要。7日で自動失効。
         explainer_bucket = s3.Bucket(
             self,
             "ExplainerBucket",
+            # バケットは私有。閲覧用 Lambda(Function URL)が私有 S3 を短い URL で配る。
+            # presigned URL は1600文字超で LINE の URI 上限(1000)を超えるための回避策。7日で自動失効。
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
@@ -195,15 +197,51 @@ class WhatsNewStack(Stack):
             ],
         )
 
-        # AgentCore Runtime の実行ロール。`agentcore launch --execution-role` で使う想定。
-        # 最小権限: 生成 HTML の put/get / OpenAI モデルの InvokeModel / 記事取得 / LINE シークレット。
-        explainer_role = iam.Role(
+        # 閲覧用 Lambda: GET /?id=<short_id> で私有 S3 の explainer/<id>.html を text/html で返す。
+        # LINE には presigned(長い)ではなくこの短い Function URL を渡す。
+        viewer = lambda_.Function(
             self,
-            "ExplainerAgentRole",
-            assumed_by=iam.ServicePrincipal("bedrock-agentcore.amazonaws.com"),
+            "ExplainerViewer",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="viewer.lambda_handler",
+            code=lambda_.Code.from_asset("src"),
+            timeout=Duration.seconds(30),
+            memory_size=256,
+            environment={"EXPLAINER_BUCKET": explainer_bucket.bucket_name},
         )
-        explainer_bucket.grant_read_write(explainer_role)
-        explainer_role.add_to_policy(
+        explainer_bucket.grant_read(viewer)
+        viewer_url = viewer.add_function_url(
+            auth_type=lambda_.FunctionUrlAuthType.NONE,
+        )
+        CfnOutput(self, "ExplainerViewerUrl", value=viewer_url.url)
+
+        # webhook → dispatcher Lambda(Event 非同期) の2段構え。
+        # 図解生成は数十秒かかり invoke 系は同期のため、webhook(60s)から直接やるとブロックして
+        # タイムアウト→LINE 再送→二重生成を招く。投げっぱなしできる dispatcher を挟み webhook を即応させる。
+        # v1 では dispatcher 自身が Bedrock(OpenAI)で HTML を生成し S3→presigned→Push する。
+        # （AgentCore Runtime は将来 MCP 深掘りが要る段で載せる。成果物は agent/ にある）
+        explainer_dispatcher = lambda_.Function(
+            self,
+            "ExplainerDispatcher",
+            runtime=lambda_.Runtime.PYTHON_3_12,
+            handler="agent_trigger.lambda_handler",
+            code=lambda_.Code.from_asset("src"),
+            timeout=Duration.seconds(300),
+            memory_size=512,
+            environment={
+                "TABLE_NAME": table.table_name,
+                "EXPLAINER_BUCKET": explainer_bucket.bucket_name,
+                # LINE に渡す短い閲覧 URL の土台（閲覧 Lambda の Function URL）
+                "EXPLAINER_VIEWER_URL": viewer_url.url,
+                # 既定は IAM だけで呼べる gpt-oss。GPT-5.5(us-east-2)へは env 差し替えで切替。
+                "EXPLAINER_MODEL_ID": "openai.gpt-oss-120b-1:0",
+                "EXPLAINER_BEDROCK_REGION": "us-east-1",
+                "LINE_TOKEN_PARAM": line_token_param,
+                "LINE_USER_ID_PARAM": line_user_id_param,
+            },
+        )
+        explainer_bucket.grant_read_write(explainer_dispatcher)
+        explainer_dispatcher.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["bedrock:InvokeModel"],
                 # GPT-5.5 は us-east-2、既定の gpt-oss は us-east-1。両リージョンの OpenAI 系を許可。
@@ -213,13 +251,13 @@ class WhatsNewStack(Stack):
                 ],
             )
         )
-        explainer_role.add_to_policy(
+        explainer_dispatcher.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["dynamodb:GetItem"],
                 resources=[table.table_arn],
             )
         )
-        explainer_role.add_to_policy(
+        explainer_dispatcher.add_to_role_policy(
             iam.PolicyStatement(
                 actions=["ssm:GetParameter"],
                 resources=[
@@ -236,36 +274,6 @@ class WhatsNewStack(Stack):
                 ],
             )
         )
-
-        # webhook → dispatcher Lambda(Event 非同期) → AgentCore Runtime の2段構え。
-        # invoke_agent_runtime は同期 API のため webhook(60s) から直接叩くとブロックして
-        # タイムアウト→LINE 再送→二重生成を招く。投げっぱなしできる dispatcher を挟み、
-        # webhook を即応させる（dispatcher はクリティカルパス外なので長め timeout）。
-        explainer_dispatcher = lambda_.Function(
-            self,
-            "ExplainerDispatcher",
-            runtime=lambda_.Runtime.PYTHON_3_12,
-            handler="agent_trigger.lambda_handler",
-            code=lambda_.Code.from_asset("src"),
-            timeout=Duration.seconds(300),
-            memory_size=256,
-            environment={
-                # launch 後に AgentCore Runtime の ARN を設定（初期は空プレースホルダ）
-                "AGENT_RUNTIME_ARN": "",
-            },
-        )
-        explainer_dispatcher.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["bedrock-agentcore:InvokeAgentRuntime"],
-                resources=[
-                    self.format_arn(
-                        service="bedrock-agentcore",
-                        resource="runtime",
-                        resource_name="*",
-                    ),
-                ],
-            )
-        )
         # webhook は dispatcher を非同期(Event)起動するだけ（即応のため）
         webhook.add_environment(
             "EXPLAINER_DISPATCHER_FUNCTION",
@@ -274,7 +282,6 @@ class WhatsNewStack(Stack):
         explainer_dispatcher.grant_invoke(webhook)
 
         CfnOutput(self, "ExplainerBucketName", value=explainer_bucket.bucket_name)
-        CfnOutput(self, "ExplainerAgentRoleArn", value=explainer_role.role_arn)
 
         scheduler_role = iam.Role(
             self,
