@@ -14,7 +14,7 @@ Phase 1 が毎朝カードを配り、そのカードの「グラフィカル解
 ```mermaid
 flowchart TB
   subgraph P1["Phase 1 / 1.5 ― 毎朝の要約配信（決定論パイプライン）"]
-    direction LR
+    direction TB
     SCH["EventBridge Scheduler<br/>毎朝 7:00 JST"] --> W["Worker Lambda"]
     RSS["AWS What's New RSS"] --> W
     W --> FIL{"フィルタ<br/>ルール → Nova 分類"}
@@ -31,7 +31,7 @@ flowchart TB
   LINE -->|「グラフィカル解説」を押す| WH
 
   subgraph P2["Phase 2 ― 図解生成エージェント（オンデマンド）"]
-    direction LR
+    direction TB
     WH["Webhook Lambda<br/>(Function URL)"] -->|Event 非同期| DIS["Dispatcher Lambda"]
     DIS -->|invoke_agent_runtime| AC["AgentCore Runtime<br/>Strands・サーバレス"]
     AC --> MCP["AWS Knowledge MCP<br/>サービス詳細を取得"]
