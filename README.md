@@ -3,7 +3,7 @@
 AWS の新機能情報（What's New）を毎朝要約して LINE に届け、さらに各記事を **AI エージェントがその場でグラフィカルな図解に変換**するサービス。
 
 - **Phase 1 / 1.5（決定論パイプライン・稼働中）**: What's New RSS → ルール＋LLM でフィルタ → Amazon Bedrock (Nova Micro) で日本語要約 → LINE に 1 記事 = 1 Flex カードで配信。各カードに「Not for Me」フィードバックボタン。
-- **Phase 2（エージェント・稼働中）**: カードの「グラフィカル解説」ボタンを押すと、**Amazon Bedrock AgentCore Runtime**（サーバレス）上のエージェントが、記事情報に **AWS Knowledge MCP** で取得したサービス詳細を加え、**Claude Sonnet 5 で密な日本語インフォグラフィック HTML** を生成。私有 S3 に置き、閲覧用 Lambda の短い URL を LINE に Push する（スマホ対応のレスポンシブ HTML）。
+- **Phase 2（エージェント・稼働中）**: カードの「グラフィカル解説」ボタンを押すと、**Amazon Bedrock AgentCore Runtime**（サーバレス）上のエージェントが、記事情報に **AWS Knowledge MCP** で取得したサービス詳細を加え、**Claude Sonnet 4.6 で密な日本語インフォグラフィック HTML** を生成。私有 S3 に置き、閲覧用 Lambda の短い URL を LINE に Push する（スマホ対応のレスポンシブ HTML）。
 
 すべて IAM で完結し、長期キーは持たない。詳細は [`docs/plan.md`](docs/plan.md) / [`docs/spec.md`](docs/spec.md) / [`docs/agentcore-plan.md`](docs/agentcore-plan.md)。
 
@@ -23,7 +23,7 @@ flowchart TD
   WH --> DIS["Dispatcher Lambda（Event で非同期に起動）"]
   DIS --> AC["AgentCore Runtime（サーバレス）が処理を実行"]
   AC --> MCP["AWS Knowledge MCP でサービス詳細を取得"]
-  MCP --> GEN["Bedrock Claude Sonnet 5 で密な日本語 HTML を生成"]
+  MCP --> GEN["Bedrock Claude Sonnet 4.6 で密な日本語 HTML を生成"]
   GEN --> S3["S3（私有）に図解 HTML を保存"]
   S3 --> PUSH["Viewer Lambda の短い URL を LINE に Push"]
   PUSH --> DONE(["ユーザーがタップして図解を閲覧"])
@@ -57,4 +57,4 @@ flowchart TD
 - `whatsnewExpl/agentcore/aws-targets.json`（デプロイ先アカウント）は各自ローカルに作成する（`aws-targets.example.json` 参照）。
 
 ## 技術スタック
-Python 3.12 / AWS（us-east-1）/ Amazon Bedrock（Nova Micro・Claude Sonnet 5）/ Amazon Bedrock AgentCore / AWS Knowledge MCP / AWS CDK / LINE Messaging API
+Python 3.12 / AWS（us-east-1）/ Amazon Bedrock（Nova Micro・Claude Sonnet 4.6）/ Amazon Bedrock AgentCore / AWS Knowledge MCP / AWS CDK / LINE Messaging API
