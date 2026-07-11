@@ -9,38 +9,35 @@ AWS の新機能情報（What's New）を毎朝要約して LINE に届け、さ
 
 ## 構成図
 
-左が **Phase 1 / 1.5（毎朝の配信）**、右が **Phase 2（図解エージェント）**。中央の **LINE** と **DynamoDB** を両フェーズで共有する。Phase 1 が配ったカードの「グラフィカル解説」ボタンが Phase 2 を起動する。
+上から下へ1つの流れで読む。**青 = Phase 1 / 1.5（毎朝の配信）**、**オレンジ = Phase 2（図解エージェント）**。中央の「ボタンを押す」が2つのフェーズをつなぐ。
 
 ```mermaid
-flowchart LR
-  subgraph P1["Phase 1 / 1.5 ― 毎朝の要約配信"]
-    direction TB
-    SCH["EventBridge Scheduler<br/>毎朝 7:00 JST"] --> W["Worker Lambda"]
-    RSS["What's New RSS"] --> W
-    W --> FIL{"フィルタ<br/>ルール → Nova 分類"}
-    FIL -->|配信| SUM["Bedrock Nova Micro<br/>日本語要約"]
-    SUM --> CARD["LINE Flex カード<br/>詳細 / Not for Me / グラフィカル解説"]
-  end
+flowchart TD
+  SCH["EventBridge Scheduler（毎朝 7:00 JST）"] --> W["Worker Lambda"]
+  RSS["AWS What's New RSS"] --> W
+  W --> FIL["フィルタ（ルール → Nova で分類）"]
+  FIL --> SUM["Bedrock Nova Micro で日本語要約"]
+  SUM --> CARD["LINE に Flex カードを配信<br/>（詳細 / Not for Me / グラフィカル解説）"]
+  CARD --> TAP(["ユーザーが「グラフィカル解説」ボタンを押す"])
+  TAP --> WH["Webhook Lambda（即「生成中」と返信）"]
+  WH --> DIS["Dispatcher Lambda（Event で非同期に起動）"]
+  DIS --> AC["AgentCore Runtime（サーバレス）が処理を実行"]
+  AC --> MCP["AWS Knowledge MCP でサービス詳細を取得"]
+  MCP --> GEN["Bedrock Claude Sonnet 5 で密な日本語 HTML を生成"]
+  GEN --> S3["S3（私有）に図解 HTML を保存"]
+  S3 --> PUSH["Viewer Lambda の短い URL を LINE に Push"]
+  PUSH --> DONE(["ユーザーがタップして図解を閲覧"])
 
-  LINE(("LINE ／<br/>ユーザー"))
-  DDB[("DynamoDB<br/>記事・既読・feedback")]
+  DB[("DynamoDB<br/>記事・既読・feedback")]
+  W -. 記事を保存 .-> DB
+  AC -. 記事を取得 .-> DB
 
-  subgraph P2["Phase 2 ― 図解生成エージェント（オンデマンド）"]
-    direction TB
-    WH["Webhook Lambda<br/>(Function URL)"] --> DIS["Dispatcher Lambda<br/>Event 非同期"]
-    DIS --> AC["AgentCore Runtime<br/>Strands・サーバレス"]
-    AC --> MCP["AWS Knowledge MCP<br/>サービス詳細"]
-    AC --> CLA["Bedrock<br/>Claude Sonnet 5<br/>密な日本語 HTML"]
-    CLA --> S3[("S3（私有）")]
-    VIEW["Viewer Lambda<br/>(Function URL)"] --> S3
-  end
-
-  CARD ==> LINE
-  LINE ==>|「グラフィカル解説」を押す| WH
-  AC ==>|図解リンクを Push| LINE
-  LINE ==>|リンクをタップ| VIEW
-  W -. 記事を保存 .-> DDB
-  AC -. 記事を取得 .-> DDB
+  classDef p1 fill:#e8f0ff,stroke:#3f6fd1,color:#12233f;
+  classDef p2 fill:#fff2e0,stroke:#e08a00,color:#3a2a00;
+  classDef ext fill:#f2f2f2,stroke:#9aa0a6,color:#222;
+  class SCH,RSS,W,FIL,SUM,CARD p1;
+  class WH,DIS,AC,MCP,GEN,S3,PUSH p2;
+  class TAP,DONE,DB ext;
 ```
 
 **要点**
