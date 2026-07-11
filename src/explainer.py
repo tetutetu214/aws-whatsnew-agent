@@ -61,6 +61,9 @@ HTML_SYSTEM_PROMPT = (
     "箱と矢印の小さめの構成図＋短い補足で。API 仕様の詳細列挙で主役を食わない。\n"
     "  ⑤ 下部に『利用シーン』『メリット（今回の変更で何が嬉しいか）』を各3〜5項目、アイコン付きカードで。\n"
     "『今回のアップデート』の情報が薄い場合でも、背景で水増しせず、変更点を軸に構成する。事実に反することは書かない。\n"
+    "【出典】最下部のフッターに『出典: AWS What's New（元記事）』として、与えられた出典URLを"
+    "クリック可能な <a href=\"出典URL\" target=\"_blank\" rel=\"noopener\">元記事を開く</a> のリンクで必ず入れる。"
+    "URL は与えられたものを一字一句そのまま使い、勝手に生成・改変しない。出典URLが与えられていない場合はリンクを省く。\n"
     "【デザイン】白背景＋AWSオレンジ#FF9900のアクセント＋濃紺#232F3Eの見出し＋淡いグレーの枠/カード。"
     "角丸・余白・整列を効かせ、各セクションに見出しを付けて視認性を高く。SVGアイコンは単色ラインで統一。"
     "日本語は system-ui / sans-serif、長い語は折り返す(word-break:break-word)。"
@@ -116,6 +119,7 @@ def build_html(
     service_context: str,
     model_id: str,
     bedrock_client: Any,
+    link: str = "",
 ) -> str:
     # 役割を明示: What's New(=今回の変更) が主役6割、サービス背景(=MCP) が補足4割。
     user_text = (
@@ -128,6 +132,9 @@ def build_html(
             "主役を理解するための背景であり、これで主役を埋もれさせない）\n"
             f"{service_context}"
         )
+    if link:
+        # フッターの出典リンクに使う。改変せずそのまま <a> に入れさせる。
+        user_text += f"\n\n# 出典URL（フッターに元記事リンクとして必ず入れる。改変禁止）\n{link}"
 
     response = bedrock_client.converse(
         modelId=model_id,
@@ -234,6 +241,7 @@ def generate_explainer(
             service_context,
             config.model_id,
             bedrock_client,
+            link=mapping.get("link", ""),
         )
         if not html:
             raise RuntimeError("empty HTML from model")

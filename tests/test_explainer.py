@@ -107,6 +107,16 @@ def test_build_htmlはコードフェンスを剥がす() -> None:
     assert build_html("題", "本文", "", "model-x", bedrock) == "<html>x</html>"
 
 
+def test_build_htmlは出典URLをプロンプトに渡す() -> None:
+    # 図解フッターの出典リンクに使うため、記事の元URLをモデル入力に含める。
+    bedrock = FakeBedrock("<html>x</html>")
+
+    build_html("題", "本文", "", "model-x", bedrock, link="https://aws.amazon.com/whats-new/123")
+
+    user_text = bedrock.calls[0]["messages"][0]["content"][0]["text"]
+    assert "https://aws.amazon.com/whats-new/123" in user_text
+
+
 def test_store_htmlはtext_htmlのContentTypeで指定バケットにputする() -> None:
     s3 = FakeS3()
 
