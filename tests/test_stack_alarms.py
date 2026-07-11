@@ -176,20 +176,23 @@ def test_SettingsWebhookはwebhook_handlerで作られる(
     )
 
 
-def test_Phase2の図解HTML用S3バケットは7日失効で作られる(
+def test_Phase2の図解HTML用S3バケットは私有で自動失効させない(
     template_without_email: Template,
 ) -> None:
+    # 図解は AWS 更新の解説資産として残すため、失効ライフサイクルは付けない。
     template_without_email.has_resource_properties(
         "AWS::S3::Bucket",
         {
-            "LifecycleConfiguration": Match.object_like(
-                {
-                    "Rules": Match.array_with(
-                        [Match.object_like({"ExpirationInDays": 7})]
-                    )
-                }
+            "PublicAccessBlockConfiguration": Match.object_like(
+                {"BlockPublicPolicy": True, "RestrictPublicBuckets": True}
             ),
         },
+    )
+    # 失効ルール（LifecycleConfiguration）を持つ S3 バケットが存在しないこと。
+    template_without_email.resource_properties_count_is(
+        "AWS::S3::Bucket",
+        {"LifecycleConfiguration": Match.any_value()},
+        0,
     )
 
 

@@ -182,19 +182,17 @@ class WhatsNewStack(Stack):
             )
         )
 
-        # --- Phase2: 図解エージェント（dispatcher Lambda が生成 + S3 presigned 配信） ---
-        # 生成 HTML の置き場。presigned URL で配るので公開不要。7日で自動失効。
+        # --- Phase2: 図解エージェント（生成 HTML を S3 保管、閲覧 Lambda が短い URL で配信） ---
+        # 生成 HTML の置き場。バケットは私有で、閲覧用 Lambda(Function URL)が私有 S3 を短い URL で配る
+        # （presigned URL は1600文字超で LINE の URI 上限(1000)を超えるため）。
+        # 図解は AWS 更新の解説資産として残す（1枚数十KB・記事1本=1オブジェクトで費用ほぼゼロ）ため
+        # ライフサイクルでの自動失効は付けない。
         explainer_bucket = s3.Bucket(
             self,
             "ExplainerBucket",
-            # バケットは私有。閲覧用 Lambda(Function URL)が私有 S3 を短い URL で配る。
-            # presigned URL は1600文字超で LINE の URI 上限(1000)を超えるための回避策。7日で自動失効。
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             removal_policy=RemovalPolicy.DESTROY,
             auto_delete_objects=True,
-            lifecycle_rules=[
-                s3.LifecycleRule(expiration=Duration.days(7)),
-            ],
         )
 
         # 閲覧用 Lambda: GET /?id=<short_id> で私有 S3 の explainer/<id>.html を text/html で返す。
