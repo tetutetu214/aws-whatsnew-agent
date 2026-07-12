@@ -1,5 +1,10 @@
 # todo.md — aws-whatsnew-agent
 
+## 次の一手 <!-- next-move: 2026-07-12 -->
+- ⏳てつてつ: LINE図解ボタンの実機タップ確認・SNS購読確認メールのConfirm
+- 死活アラート設計 → CDK実装（Codex委譲）
+- Nova Micro要約の品質判定（数日分のデータ蓄積待ち）
+
 ## Phase 1.5: カテゴリフィルタ + LINE 設定・フィードバック（2026-07-08 起票、同日「集計ループまで全部入り」でスコープ確定、spec.md §9）
 - [x] スコープ確定: LINE 内で設定操作 / ルール+LLM 二段判定 / 「いらない」ボタンのみ / 集計・カテゴリ追加削除・LLM 提案まで全部入り（てつてつ回答済み）
 - [x] 2026-07-08 実装（Codex gpt-5.5 委譲、11分で完了）: フィルタ二段判定 / 動的カテゴリ / EXCLUDE_SERVICES 廃止 / 配信 Flex 化（1記事=1カード）+ 「いらない」ボタン / SettingsWebhook Lambda + Function URL / CDK 更新 / テスト
