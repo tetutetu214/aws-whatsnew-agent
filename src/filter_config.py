@@ -1,4 +1,4 @@
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 import json
 import logging
@@ -18,8 +18,55 @@ class Category:
 
 
 @dataclass(frozen=True)
+class Focus:
+    enabled: bool
+    label: str
+    product_slugs: tuple[str, ...]
+    title_keywords: tuple[str, ...]
+
+
+DEFAULT_FOCUS = Focus(
+    enabled=True,
+    label="サーバレス",
+    product_slugs=(
+        "aws-lambda",
+        "amazon-api-gateway",
+        "aws-step-functions",
+        "amazon-eventbridge",
+        "amazon-dynamodb",
+        "amazon-sqs",
+        "amazon-simple-queue-service",
+        "amazon-sns",
+        "amazon-simple-notification-service",
+        "aws-appsync",
+        "aws-fargate",
+        "aws-amplify",
+        "aws-app-runner",
+        "amazon-cognito",
+    ),
+    title_keywords=(
+        "serverless",
+        "lambda",
+        "api gateway",
+        "step functions",
+        "eventbridge",
+        "dynamodb",
+        "sqs",
+        "sns",
+        "appsync",
+        "fargate",
+        "amplify",
+        "app runner",
+        "cognito",
+        "agentcore",
+    ),
+)
+
+
+@dataclass(frozen=True)
 class FilterConfig:
     categories: tuple[Category, ...]
+    focus: Focus = DEFAULT_FOCUS
 
 
 DEFAULT_CATEGORIES = (
@@ -88,7 +135,10 @@ def parse_filter_config(raw_json: str) -> FilterConfig:
 
     categories = [_category_from_dict(item) for item in raw_categories]
     valid_categories = tuple(item for item in categories if item is not None)
-    return merge_with_builtin(valid_categories)
+    return merge_with_builtin(
+        valid_categories,
+        focus=_focus_from_dict(payload.get("focus")),
+    )
 
 
 def to_json(filter_config: FilterConfig) -> str:
@@ -96,7 +146,8 @@ def to_json(filter_config: FilterConfig) -> str:
         "categories": [
             asdict(category)
             for category in filter_config.categories
-        ]
+        ],
+        "focus": asdict(filter_config.focus),
     }
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -120,7 +171,7 @@ def toggle_category(filter_config: FilterConfig, category_id: str) -> FilterConf
             )
             continue
         categories.append(category)
-    return FilterConfig(categories=tuple(categories))
+    return replace(filter_config, categories=tuple(categories))
 
 
 def add_category(
@@ -141,7 +192,7 @@ def add_category(
         for category in filter_config.categories
         if category.id != category_id
     )
-    return FilterConfig(categories=(*remaining, new_category))
+    return replace(filter_config, categories=(*remaining, new_category))
 
 
 def delete_category(filter_config: FilterConfig, category_id: str) -> FilterConfig:
@@ -149,7 +200,8 @@ def delete_category(filter_config: FilterConfig, category_id: str) -> FilterConf
         if category.id == category_id and category.builtin:
             return filter_config
 
-    return FilterConfig(
+    return replace(
+        filter_config,
         categories=tuple(
             category
             for category in filter_config.categories
@@ -158,7 +210,10 @@ def delete_category(filter_config: FilterConfig, category_id: str) -> FilterConf
     )
 
 
-def merge_with_builtin(categories: tuple[Category, ...]) -> FilterConfig:
+def merge_with_builtin(
+    categories: tuple[Category, ...],
+    focus: Focus = DEFAULT_FOCUS,
+) -> FilterConfig:
     by_id = {category.id: category for category in categories}
     merged: list[Category] = []
 
@@ -182,7 +237,33 @@ def merge_with_builtin(categories: tuple[Category, ...]) -> FilterConfig:
         for category in categories
         if category.id in by_id and not category.builtin
     )
-    return FilterConfig(categories=tuple(merged))
+    return FilterConfig(categories=tuple(merged), focus=focus)
+
+
+def _focus_from_dict(payload: object) -> Focus:
+    if not isinstance(payload, dict):
+        return DEFAULT_FOCUS
+
+    enabled = payload.get("enabled", DEFAULT_FOCUS.enabled)
+    label = payload.get("label", DEFAULT_FOCUS.label)
+    product_slugs = payload.get("product_slugs", DEFAULT_FOCUS.product_slugs)
+    title_keywords = payload.get("title_keywords", DEFAULT_FOCUS.title_keywords)
+    if (
+        not isinstance(enabled, bool)
+        or not isinstance(label, str)
+        or not isinstance(product_slugs, (list, tuple))
+        or not all(isinstance(slug, str) for slug in product_slugs)
+        or not isinstance(title_keywords, (list, tuple))
+        or not all(isinstance(keyword, str) for keyword in title_keywords)
+    ):
+        return DEFAULT_FOCUS
+
+    return Focus(
+        enabled=enabled,
+        label=label,
+        product_slugs=tuple(product_slugs),
+        title_keywords=tuple(title_keywords),
+    )
 
 
 def _category_from_dict(payload: Any) -> Category | None:

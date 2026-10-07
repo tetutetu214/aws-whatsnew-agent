@@ -74,3 +74,22 @@
 ## 参考（既存プロジェクト）
 - daily-news-line-notifier: HuggingFace 論文を GitHub Actions cron で LINE Push。骨格を流用可能。
 - 20250915_get_awsnews: What's New RSS → Bedrock 要約の PoC（4ブロック要約）。
+
+## 2026-10-07 サーバレス絞り込み（配信対象を許可リスト方式に変更）
+
+### 決めたこと
+- 既存の除外判定（リージョン拡大・インスタンスサイズ）の前に、対象分野だけを通す関門を足した。判定は LLM を使わず、RSS の `<category>` 欄の製品タグ、またはタイトルの語（単語境界つき）のどちらかが一致すれば通す。理由は、担当業務で取りこぼしを避けたいことと、判定結果を後から説明できること。
+- 設定は SSM `/whatsnew-agent/filter/config` の JSON に `focus` として持つ。`focus` キーが無い旧形式の値は既定（サーバレス有効）として読む。全件配信へ戻すときは `"focus":{"enabled":false}` を書けばよく、再デプロイは要らない。
+- 対象外の記事は DynamoDB に category=`out_of_focus` で記録し、要約（Bedrock）には回さない。戻り値の `filtered` は従来どおり除外判定の件数で、対象外は `out_of_focus` に分けて数える。
+
+### 実測
+- RSS の `marketing:marchitecture/serverless` タグは 100 件中 1 件しか付いておらず、判定には使えない。製品タグ（`general:products/aws-lambda` など）とタイトルが頼り。
+- RSS 100 件（09-25〜10-06）のうち 11 件は category 欄が空だった。タグだけに頼ると落ちるので、タイトル語の判定を併用している。
+- 公式の一覧 API（`https://aws.amazon.com/api/dirs/items/search?item.directoryId=whats-new-v2`）で過去 1000 件（06-05〜10-06）を集計。実在を確認できたタグは aws-lambda / amazon-api-gateway / aws-step-functions / amazon-eventbridge / amazon-dynamodb / amazon-sns / amazon-simple-notification-service / aws-fargate / amazon-cognito。amazon-sqs / aws-appsync / aws-amplify / aws-app-runner は該当記事が 0 件で未確認（タイトル語でも拾う）。
+- 同じ 1000 件に当てると月 23〜27 件が通る。AgentCore の記事は 24 件あり、製品タグは amazon-bedrock なのでタイトル語でしか拾えない。
+
+### ハマり・注意
+- `FilterConfig(categories=...)` で作り直すと追加フィールドが落ちる。LINE の設定メニューは設定全体を保存し直すため、`dataclasses.replace` で引き継がないと、カテゴリを 1 回操作しただけで focus が既定値に戻る。往復のテストを tests/test_filter_config.py に置いた。
+- 無配信アラーム（WorkerNoDeliveryAlarm）の欠損データを BREACHING にすると、デプロイ直後に過去分が欠損扱いになり誤発報する。Lambda は 0 件の日も `SentArticles=0` を出すので NOT_BREACHING にした。起動しない障害は既存の WorkerMissingInvocationAlarm が見る。
+- Codex のサンドボックスでは CDK（jsii）がホーム配下へキャッシュを書けず pytest の収集が止まる。`JSII_RUNTIME_PACKAGE_CACHE_ROOT=/tmp/...` を付けると通る。
+- 料金（us-east-1、Price List 2026-09-22 版）: 標準アラーム 月 0.10 ドル、カスタムメトリクス 月 0.30 ドル。

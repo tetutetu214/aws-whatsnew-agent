@@ -22,6 +22,7 @@ class Article:
     link: str
     description: str
     published: str
+    categories: tuple[str, ...] = ()
 
 
 def fetch_articles(
@@ -57,6 +58,7 @@ def parse_articles(xml_text: str) -> list[Article]:
                 link=link,
                 description=_clean_description(description),
                 published=published,
+                categories=_category_slugs(item),
             )
         )
 
@@ -68,3 +70,12 @@ def _text(item: ET.Element, tag_name: str) -> str:
     if child is None or child.text is None:
         return ""
     return child.text.strip()
+
+
+def _category_slugs(item: ET.Element) -> tuple[str, ...]:
+    slugs = (
+        value.strip().rsplit("/", 1)[-1].strip().lower()
+        for category in item.findall("category")
+        for value in (category.text or "").split(",")
+    )
+    return tuple(dict.fromkeys(slug for slug in slugs if slug))
