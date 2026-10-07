@@ -17,15 +17,21 @@ def test_実フィードの対象記事は指定の7件と完全一致する() -
 
     assert len(articles) == 100
     assert matching_titles == {
-        "Amazon ECS adds Amazon VPC Lattice support for blue/green, linear, "
-        "and canary deployments",
+        (
+            "Amazon ECS adds Amazon VPC Lattice support for blue/green, linear, "
+            "and canary deployments"
+        ),
         "Amazon DynamoDB introduces filtered export to Amazon S3",
         "Amazon DynamoDB Accelerator (DAX) is now available in additional Regions",
         "AgentCore Gateway supports private TLS certificates for VPC endpoints",
-        "Serverless Storage on Amazon EMR Serverless now supports "
-        "terabyte-scale shuffle",
-        "Amazon Aurora serverless now scales faster to support agentic AI "
-        "and other bursty workloads",
+        (
+            "Serverless Storage on Amazon EMR Serverless now supports "
+            "terabyte-scale shuffle"
+        ),
+        (
+            "Amazon Aurora serverless now scales faster to support agentic AI "
+            "and other bursty workloads"
+        ),
         "Amazon ElastiCache Serverless for Valkey now supports public endpoints",
     }
 

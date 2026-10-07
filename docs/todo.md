@@ -2,6 +2,7 @@
 
 ## 次の一手 <!-- next-move: 2026-10-07 -->
 - ⏳てつてつ: サーバレス絞り込みの PR をマージしてよいか、本番へ `cdk deploy` してよいかの判断（feature/serverless-focus、pytest 153 件 pass・cdk synth 成功）
+- デプロイ直後の確認: Lambda を 1 回手動実行し、CloudWatch のメトリクス AwsWhatsNewAgent/SentArticles にデータ点が出ること、WorkerNoDeliveryAlarm が INSUFFICIENT_DATA（データ不足）から抜けることを見る。確認できるまで無配信アラームは「動いている」と扱わない
 - デプロイ後の観測: 翌朝の実行結果で out_of_focus と sent の件数を見る。対象外にした記事のタイトルは CloudWatch Logs の「Filtered as out_of_focus」で確認し、担当として必要な記事が落ちていないかを 1 週間分見る
 - 以下は 07-18 時点から持ち越し
 - ⏳てつてつ: LINE図解ボタンの実機タップ確認・SNS購読確認メールのConfirm
