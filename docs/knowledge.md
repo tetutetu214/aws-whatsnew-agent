@@ -93,3 +93,8 @@
 - 無配信アラーム（WorkerNoDeliveryAlarm）の欠損データを BREACHING にすると、デプロイ直後に過去分が欠損扱いになり誤発報する。Lambda は 0 件の日も `SentArticles=0` を出すので NOT_BREACHING にした。起動しない障害は既存の WorkerMissingInvocationAlarm が見る。
 - Codex のサンドボックスでは CDK（jsii）がホーム配下へキャッシュを書けず pytest の収集が止まる。`JSII_RUNTIME_PACKAGE_CACHE_ROOT=/tmp/...` を付けると通る。
 - 料金（us-east-1、Price List 2026-09-22 版）: 標準アラーム 月 0.10 ドル、カスタムメトリクス 月 0.30 ドル。
+
+### 学習済み概念（2026-10-07、PR 作成前の理解度テストで正解）
+- 製品タグだけで判定すると、タグが空の記事（100 件中 11 件）が落ちる。タイトルの語を併用する理由
+- 設定オブジェクトを一部の項目だけで作り直すと、ほかの項目が消える（dataclasses.replace で引き継ぐ）
+- CloudWatch の「データが無い」と「0 というデータがある」は別の状態。新着が無い日も Lambda は 0 を記録する（3 回目の出題で正解。1・2 回目は「新着が無い日＝データなし」と答えた）
