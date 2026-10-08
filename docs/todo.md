@@ -1,10 +1,20 @@
 # todo.md — aws-whatsnew-agent
 
-## 次の一手 <!-- next-move: 2026-07-18 -->
+## 次の一手 <!-- next-move: 2026-10-07 -->
+- ⏳てつてつ: サーバレス絞り込みの PR をマージしてよいか、本番へ `cdk deploy` してよいかの判断（feature/serverless-focus、pytest 153 件 pass・cdk synth 成功）
+- デプロイ直後の確認: Lambda を 1 回手動実行し、CloudWatch のメトリクス AwsWhatsNewAgent/SentArticles にデータ点が出ること、WorkerNoDeliveryAlarm が INSUFFICIENT_DATA（データ不足）から抜けることを見る。確認できるまで無配信アラームは「動いている」と扱わない
+- デプロイ後の観測: 翌朝の実行結果で out_of_focus と sent の件数を見る。対象外にした記事のタイトルは CloudWatch Logs の「Filtered as out_of_focus」で確認し、担当として必要な記事が落ちていないかを 1 週間分見る
+- 以下は 07-18 時点から持ち越し
 - ⏳てつてつ: LINE図解ボタンの実機タップ確認・SNS購読確認メールのConfirm
 - 死活アラートのCDK実装（dispatcher例外が握りつぶされない前提を実コードで確認済み、30〜40行＋テスト。audit-20260718 所見1）
 - Nova Micro要約の品質判定（DynamoDB確認は要 aws login）
 - 雑務: マージ済みブランチ4本の掃除（audit-20260718 所見3）
+
+## サーバレス絞り込み（2026-10-07、本人依頼「さーばれすだけにしぼって」。理由は会社で週刊AWSのサーバレス確認担当になったため）
+- [x] 実装（Codex gpt-6.1-sol 委譲 → Claude 検収）: RSS の category 欄を読む / 対象判定 src/focus.py / 設定 focus を SSM の同じ JSON に保存 / 対象外は out_of_focus として記録 / 7 日間無配信アラーム
+- [ ] PR マージと cdk deploy（てつてつの承認待ち）
+- [ ] デプロイ後 1 週間の観測（上の「次の一手」参照）
+- [ ] LINE 設定メニューから絞り込みをオンオフする操作は未実装（必要になったら追加）
 
 ## Phase 1.5: カテゴリフィルタ + LINE 設定・フィードバック（2026-07-08 起票、同日「集計ループまで全部入り」でスコープ確定、spec.md §9）
 - [x] スコープ確定: LINE 内で設定操作 / ルール+LLM 二段判定 / 「いらない」ボタンのみ / 集計・カテゴリ追加削除・LLM 提案まで全部入り（てつてつ回答済み）

@@ -1,12 +1,15 @@
 from typing import Any
+from time import time
+import json
 import logging
 
 try:
-    from . import classify, config, filter_config, line, rss, store, summarize
+    from . import classify, config, filter_config, focus, line, rss, store, summarize
 except ImportError:
     import classify
     import config
     import filter_config
+    import focus
     import line
     import rss
     import store
@@ -15,6 +18,7 @@ except ImportError:
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(logging.INFO)
+OUT_OF_FOCUS_CATEGORY = "out_of_focus"
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
@@ -61,12 +65,14 @@ def run_pipeline(
         }
 
     if not target_articles:
+        _emit_sent_articles_metric(0)
         return {
             "fetched": len(articles),
             "target": 0,
             "seeded": 0,
             "sent": 0,
             "filtered": 0,
+            "out_of_focus": 0,
         }
 
     current_filter_config = filter_config.load_filter_config(
@@ -75,7 +81,13 @@ def run_pipeline(
     )
     deliverable_articles: list[tuple[rss.Article, str]] = []
     filtered_count = 0
+    out_of_focus_count = 0
     for article in target_articles:
+        if not focus.is_in_focus(article, current_filter_config.focus):
+            LOGGER.info("Filtered as %s: %s", OUT_OF_FOCUS_CATEGORY, article.title)
+            article_store.mark_filtered(article, OUT_OF_FOCUS_CATEGORY)
+            out_of_focus_count += 1
+            continue
         category = classify_func(
             article,
             current_filter_config,
@@ -91,12 +103,14 @@ def run_pipeline(
         deliverable_articles.append((article, category))
 
     if not deliverable_articles:
+        _emit_sent_articles_metric(0)
         return {
             "fetched": len(articles),
             "target": len(target_articles),
             "seeded": 0,
             "sent": 0,
             "filtered": filtered_count,
+            "out_of_focus": out_of_focus_count,
         }
 
     article_summaries = [
@@ -138,13 +152,36 @@ def run_pipeline(
             )
             sent_count += 1
 
+    _emit_sent_articles_metric(sent_count)
     return {
         "fetched": len(articles),
         "target": len(target_articles),
         "seeded": 0,
         "sent": sent_count,
         "filtered": filtered_count,
+        "out_of_focus": out_of_focus_count,
     }
+
+
+def _emit_sent_articles_metric(sent_count: int) -> None:
+    print(
+        json.dumps(
+            {
+                "_aws": {
+                    "Timestamp": int(time() * 1000),
+                    "CloudWatchMetrics": [
+                        {
+                            "Namespace": "AwsWhatsNewAgent",
+                            "Dimensions": [[]],
+                            "Metrics": [{"Name": "SentArticles", "Unit": "Count"}],
+                        }
+                    ],
+                },
+                "SentArticles": sent_count,
+            },
+            separators=(",", ":"),
+        )
+    )
 
 
 def _load_line_secrets(

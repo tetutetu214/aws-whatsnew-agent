@@ -239,3 +239,31 @@ def test_dispatcherはAgentCoreRuntimeを起動する権限を持つ(
             }
         },
     )
+
+
+def test_7日間配信がない時に既存の通知先へ発報するアラームが作られる(
+    template_without_email: Template,
+) -> None:
+    topic_id = next(iter(template_without_email.find_resources("AWS::SNS::Topic")))
+
+    template_without_email.resource_count_is("AWS::CloudWatch::Alarm", 3)
+    template_without_email.has_resource_properties(
+        "AWS::CloudWatch::Alarm",
+        {
+            "MetricName": "SentArticles",
+            "Namespace": "AwsWhatsNewAgent",
+            "Statistic": "Sum",
+            "Unit": "Count",
+            "Dimensions": Match.absent(),
+            "Period": 86400,
+            "EvaluationPeriods": 7,
+            "DatapointsToAlarm": 7,
+            "ComparisonOperator": "LessThanThreshold",
+            "Threshold": 1,
+            "TreatMissingData": "notBreaching",
+            "AlarmActions": [{"Ref": topic_id}],
+            "AlarmDescription": (
+                "7日間1件も配信していない（絞り込みすぎ・タグ名変更の疑い）"
+            ),
+        },
+    )

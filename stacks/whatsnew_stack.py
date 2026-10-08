@@ -319,3 +319,25 @@ class WhatsNewStack(Stack):
             alarm_description="WhatsNew Lambda が24時間起動していない（Scheduler停止等）",
         )
         missing_invocation_alarm.add_alarm_action(alarm_action)
+
+        # アラーム3: 絞り込みすぎやタグ名の変更による、7日間連続の無配信を検知する。
+        # Lambda は 0 件の日も SentArticles=0 を出すので、データなしは NOT_BREACHING にする
+        # （BREACHING だとデプロイ直後に過去分のデータなしで誤発報する。起動停止はアラーム2が見る）。
+        no_delivery_alarm = cloudwatch.Alarm(
+            self,
+            "WorkerNoDeliveryAlarm",
+            metric=cloudwatch.Metric(
+                namespace="AwsWhatsNewAgent",
+                metric_name="SentArticles",
+                statistic="Sum",
+                period=Duration.days(1),
+                unit=cloudwatch.Unit.COUNT,
+            ),
+            threshold=1,
+            evaluation_periods=7,
+            datapoints_to_alarm=7,
+            comparison_operator=cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+            treat_missing_data=cloudwatch.TreatMissingData.NOT_BREACHING,
+            alarm_description="7日間1件も配信していない（絞り込みすぎ・タグ名変更の疑い）",
+        )
+        no_delivery_alarm.add_alarm_action(alarm_action)

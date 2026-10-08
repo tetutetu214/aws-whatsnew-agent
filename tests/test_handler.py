@@ -1,5 +1,13 @@
+from dataclasses import replace
+from time import time
+from unittest.mock import Mock
+import json
+
+import pytest
+
+# 実 AWS・LINE API の呼び出しは禁止されているため、クライアントと送信処理を代替する。
 from src.config import Config
-from src.filter_config import DEFAULT_FILTER_CONFIG
+from src.filter_config import DEFAULT_FILTER_CONFIG, DEFAULT_FOCUS, FilterConfig
 from src.handler import run_pipeline
 from src.line import FlexMessage
 from src.rss import Article
@@ -150,6 +158,12 @@ def test_Flex送信時にfeedback対応レコードを保存する() -> None:
 
 
 class FakeSsmClient:
+    def __init__(self, current_filter_config: FilterConfig | None = None) -> None:
+        self.filter_config = current_filter_config or replace(
+            DEFAULT_FILTER_CONFIG,
+            focus=replace(DEFAULT_FOCUS, enabled=False),
+        )
+
     def get_parameter(
         self,
         Name: str,
@@ -159,7 +173,7 @@ class FakeSsmClient:
         values = {
             "/token": "token-value",
             "/user": "user-value",
-            "/filter": DEFAULT_FILTER_CONFIG,
+            "/filter": self.filter_config,
         }
         value = values[Name]
         if not isinstance(value, str):
@@ -203,3 +217,169 @@ def _articles() -> list[Article]:
 def _record_summary(article: Article, summarized: list[str]) -> str:
     summarized.append(article.article_id)
     return f"要約: {article.title}"
+
+
+def test_対象外の記事は分類も要約もせず対象外件数と記録に残す(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    store = RecordingStore({"article-1", "article-2"})
+    classify_func = Mock()
+    summarize_func = Mock()
+    send_func = Mock()
+
+    result = run_pipeline(
+        app_config=_config(seed_mode=False),
+        article_store=store,
+        fetch_articles_func=lambda url: _articles(),
+        classify_func=classify_func,
+        summarize_func=summarize_func,
+        send_chunks_func=send_func,
+        ssm_client=FakeSsmClient(DEFAULT_FILTER_CONFIG),
+    )
+
+    assert result == {
+        "fetched": 2,
+        "target": 2,
+        "seeded": 0,
+        "sent": 0,
+        "filtered": 0,
+        "out_of_focus": 2,
+    }
+    assert store.filtered == {
+        "article-1": "out_of_focus",
+        "article-2": "out_of_focus",
+    }
+    assert "Filtered as out_of_focus: title 1" in caplog.messages
+    assert "Filtered as out_of_focus: title 2" in caplog.messages
+    classify_func.assert_not_called()
+    summarize_func.assert_not_called()
+    send_func.assert_not_called()
+
+
+def test_対象内のリージョン拡大記事は従来の除外件数に数える() -> None:
+    article = replace(
+        _articles()[0],
+        title=(
+            "Amazon DynamoDB Accelerator (DAX) is now available in additional Regions"
+        ),
+    )
+    store = RecordingStore({article.article_id})
+    summarize_func = Mock()
+    bedrock_client = Mock()
+
+    result = run_pipeline(
+        app_config=_config(seed_mode=False),
+        article_store=store,
+        fetch_articles_func=lambda url: [article],
+        summarize_func=summarize_func,
+        ssm_client=FakeSsmClient(DEFAULT_FILTER_CONFIG),
+        bedrock_client=bedrock_client,
+    )
+
+    assert result == {
+        "fetched": 1,
+        "target": 1,
+        "seeded": 0,
+        "sent": 0,
+        "filtered": 1,
+        "out_of_focus": 0,
+    }
+    assert store.filtered == {article.article_id: "region_expansion"}
+    summarize_func.assert_not_called()
+    bedrock_client.converse.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("scenario", "sent", "filtered", "out_of_focus"),
+    [
+        ("未送信なし", 0, 0, 0),
+        ("対象外のみ", 0, 0, 1),
+        ("分類で全件除外", 0, 1, 0),
+        ("送信成功", 1, 0, 0),
+        ("送信成功なし", 0, 0, 0),
+    ],
+)
+def test_seed以外の全戻り経路で送信数のEMFを1行出す(
+    scenario: str,
+    sent: int,
+    filtered: int,
+    out_of_focus: int,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    article = _articles()[0]
+    if scenario != "対象外のみ":
+        article = replace(article, title="AWS Lambda update")
+    store = RecordingStore(set() if scenario == "未送信なし" else {article.article_id})
+    started_at = int(time() * 1000)
+
+    result = run_pipeline(
+        app_config=_config(seed_mode=False),
+        article_store=store,
+        fetch_articles_func=lambda url: [article],
+        summarize_func=lambda article, model_id: article.title,
+        classify_func=Mock(return_value="region_expansion" if filtered else "other"),
+        send_chunks_func=(
+            lambda user_id, token, chunks: {article.article_id} if sent else set()
+        ),
+        ssm_client=FakeSsmClient(DEFAULT_FILTER_CONFIG),
+    )
+
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    metric = json.loads(lines[0])
+    assert metric["SentArticles"] == sent
+    assert metric["_aws"]["CloudWatchMetrics"] == [
+        {
+            "Namespace": "AwsWhatsNewAgent",
+            "Dimensions": [[]],
+            "Metrics": [{"Name": "SentArticles", "Unit": "Count"}],
+        }
+    ]
+    assert started_at <= metric["_aws"]["Timestamp"] <= int(time() * 1000)
+    assert result == {
+        "fetched": 1,
+        "target": 0 if scenario == "未送信なし" else 1,
+        "seeded": 0,
+        "sent": sent,
+        "filtered": filtered,
+        "out_of_focus": out_of_focus,
+    }
+
+
+def test_seedモードでは設定の読み込みとEMF出力を行わない(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    store = RecordingStore({"article-1", "article-2"})
+    ssm_client = Mock()
+
+    result = run_pipeline(
+        app_config=_config(seed_mode=True),
+        article_store=store,
+        fetch_articles_func=lambda url: _articles(),
+        ssm_client=ssm_client,
+    )
+
+    assert result == {"fetched": 2, "target": 2, "seeded": 2, "sent": 0}
+    assert capsys.readouterr().out == ""
+    ssm_client.get_parameter.assert_not_called()
+
+
+def test_未送信記事がなければ設定を読み込まず対象外件数も0になる() -> None:
+    ssm_client = Mock()
+
+    result = run_pipeline(
+        app_config=_config(seed_mode=False),
+        article_store=RecordingStore(set()),
+        fetch_articles_func=lambda url: _articles(),
+        ssm_client=ssm_client,
+    )
+
+    assert result == {
+        "fetched": 2,
+        "target": 0,
+        "seeded": 0,
+        "sent": 0,
+        "filtered": 0,
+        "out_of_focus": 0,
+    }
+    ssm_client.get_parameter.assert_not_called()
