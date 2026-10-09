@@ -1,18 +1,19 @@
 # todo.md — aws-whatsnew-agent
 
-## 次の一手 <!-- next-move: 2026-10-07 -->
-- ⏳てつてつ: サーバレス絞り込みの PR をマージしてよいか、本番へ `cdk deploy` してよいかの判断（feature/serverless-focus、pytest 153 件 pass・cdk synth 成功）
-- デプロイ直後の確認: Lambda を 1 回手動実行し、CloudWatch のメトリクス AwsWhatsNewAgent/SentArticles にデータ点が出ること、WorkerNoDeliveryAlarm が INSUFFICIENT_DATA（データ不足）から抜けることを見る。確認できるまで無配信アラームは「動いている」と扱わない
-- デプロイ後の観測: 翌朝の実行結果で out_of_focus と sent の件数を見る。対象外にした記事のタイトルは CloudWatch Logs の「Filtered as out_of_focus」で確認し、担当として必要な記事が落ちていないかを 1 週間分見る
+## 次の一手 <!-- next-move: 2026-10-10 -->
+- サーバレス絞り込みは本番稼働中（10-10 08:46 に本人が cdk deploy、PR #8 マージ済み）。手動実行 1 回で fetched 100 / target 1 / out_of_focus 1 / sent 0、メトリクス AwsWhatsNewAgent/SentArticles にデータ点 1 件（値 0）を確認
+- 未確認: WorkerNoDeliveryAlarm はデプロイ直後 INSUFFICIENT_DATA（データ不足）のまま。OK へ変わったことを見るまで「動いている」と扱わない
+- 観測（10-17 まで）: 毎朝の out_of_focus と sent の件数を見る。対象外にした記事のタイトルは CloudWatch Logs の「Filtered as out_of_focus」で確認し、週刊AWSの担当として必要な記事が落ちていないかを見る
+- cdk deploy は ALERT_EMAIL を付けて本人が `!` で実行する（付けないと通知先メールの購読が消える。knowledge.md の 10-10）
 - 以下は 07-18 時点から持ち越し
-- ⏳てつてつ: LINE図解ボタンの実機タップ確認・SNS購読確認メールのConfirm
+- ⏳てつてつ: LINE図解ボタンの実機タップ確認（SNS のメール購読は 10-10 に確認済みの状態と確認）
 - 死活アラートのCDK実装（dispatcher例外が握りつぶされない前提を実コードで確認済み、30〜40行＋テスト。audit-20260718 所見1）
 - Nova Micro要約の品質判定（DynamoDB確認は要 aws login）
 - 雑務: マージ済みブランチ4本の掃除（audit-20260718 所見3）
 
 ## サーバレス絞り込み（2026-10-07、本人依頼「さーばれすだけにしぼって」。理由は会社で週刊AWSのサーバレス確認担当になったため）
 - [x] 実装（Codex gpt-6.1-sol 委譲 → Claude 検収）: RSS の category 欄を読む / 対象判定 src/focus.py / 設定 focus を SSM の同じ JSON に保存 / 対象外は out_of_focus として記録 / 7 日間無配信アラーム
-- [ ] PR マージと cdk deploy（てつてつの承認待ち）
+- [x] PR マージと cdk deploy（てつてつの承認待ち）
 - [ ] デプロイ後 1 週間の観測（上の「次の一手」参照）
 - [ ] LINE 設定メニューから絞り込みをオンオフする操作は未実装（必要になったら追加）
 
