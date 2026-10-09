@@ -98,3 +98,8 @@
 - 製品タグだけで判定すると、タグが空の記事（100 件中 11 件）が落ちる。タイトルの語を併用する理由
 - 設定オブジェクトを一部の項目だけで作り直すと、ほかの項目が消える（dataclasses.replace で引き継ぐ）
 - CloudWatch の「データが無い」と「0 というデータがある」は別の状態。新着が無い日も Lambda は 0 を記録する（3 回目の出題で正解。1・2 回目は「新着が無い日＝データなし」と答えた）
+
+## 2026-10-10 デプロイ時の注意（ALERT_EMAIL）
+- **`cdk deploy` は環境変数 ALERT_EMAIL を付けて実行する。** 付けないと、アラーム通知先のメール購読（AWS::SNS::Subscription）が削除対象になる（stacks/whatsnew_stack.py:284 が未設定ならトピックだけ作る作りのため）。10-10 に `cdk diff` で「購読を destroy」と出て気づいた。ALERT_EMAIL を付けて取り直すと、差分は無配信アラームの追加と Lambda 4 本のコード更新だけになった。
+- Lambda 4 本（Worker / Webhook / Viewer / Dispatcher）は同じ src/ の zip を共有するので、src/ を変えると 4 本とも更新される。
+- `cdk deploy` は deploy-guard hook が Claude からの実行を止める。本人が `!` を付けて実行する。デプロイ前に `cdk diff` を見て、想定外の削除が無いことを確かめる。
