@@ -2,7 +2,7 @@
 
 ## 次の一手 <!-- next-move: 2026-10-10 -->
 - サーバレス絞り込みは本番稼働中（10-10 08:46 に本人が cdk deploy、PR #8 マージ済み）。手動実行 1 回で fetched 100 / target 1 / out_of_focus 1 / sent 0、メトリクス AwsWhatsNewAgent/SentArticles にデータ点 1 件（値 0）を確認
-- 未確認: WorkerNoDeliveryAlarm はデプロイ直後 INSUFFICIENT_DATA（データ不足）のまま。OK へ変わったことを見るまで「動いている」と扱わない
+- WorkerNoDeliveryAlarm は 10-10 09:23 に INSUFFICIENT_DATA から OK へ遷移（デプロイの約 38 分後。理由欄は「7 期間でデータ点 1、欠測 6 は NonBreaching 扱い」で設計どおり）
 - 観測（10-17 まで）: 毎朝の out_of_focus と sent の件数を見る。対象外にした記事のタイトルは CloudWatch Logs の「Filtered as out_of_focus」で確認し、週刊AWSの担当として必要な記事が落ちていないかを見る
 - cdk deploy は ALERT_EMAIL を付けて本人が `!` で実行する（付けないと通知先メールの購読が消える。knowledge.md の 10-10）
 - 以下は 07-18 時点から持ち越し
