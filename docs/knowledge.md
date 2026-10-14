@@ -103,3 +103,8 @@
 - **`cdk deploy` は環境変数 ALERT_EMAIL を付けて実行する。** 付けないと、アラーム通知先のメール購読（AWS::SNS::Subscription）が削除対象になる（stacks/whatsnew_stack.py:284 が未設定ならトピックだけ作る作りのため）。10-10 に `cdk diff` で「購読を destroy」と出て気づいた。ALERT_EMAIL を付けて取り直すと、差分は無配信アラームの追加と Lambda 4 本のコード更新だけになった。
 - Lambda 4 本（Worker / Webhook / Viewer / Dispatcher）は同じ src/ の zip を共有するので、src/ を変えると 4 本とも更新される。
 - `cdk deploy` は deploy-guard hook が Claude からの実行を止める。本人が `!` を付けて実行する。デプロイ前に `cdk diff` を見て、想定外の削除が無いことを確かめる。
+
+## 2026-10-14 サーバレス絞り込みを無効化
+- 本人の判断で全件配信へ戻した。サーバレスの新着は別途 LLM の定期実行で取得する方針。戻し方は設計どおり SSM の `focus.enabled=false` だけで、再デプロイは不要だった。
+- 7 日間無配信アラームは残す。全件配信では 7 日連続 0 件はまず起きないので、配信が止まったことの検知として働く。
+- 無効化の前に対象外にした記事は filtered として記録済みで、後から配信されない（reviewer が 10-07 に指摘していた仕様）。
