@@ -1,9 +1,9 @@
 # todo.md — aws-whatsnew-agent
 
-## 次の一手 <!-- next-move: 2026-10-10 -->
-- サーバレス絞り込みは本番稼働中（10-10 08:46 に本人が cdk deploy、PR #8 マージ済み）。手動実行 1 回で fetched 100 / target 1 / out_of_focus 1 / sent 0、メトリクス AwsWhatsNewAgent/SentArticles にデータ点 1 件（値 0）を確認
-- WorkerNoDeliveryAlarm は 10-10 09:23 に INSUFFICIENT_DATA から OK へ遷移（デプロイの約 38 分後。理由欄は「7 期間でデータ点 1、欠測 6 は NonBreaching 扱い」で設計どおり）
-- 観測（10-17 まで）: 毎朝の out_of_focus と sent の件数を見る。対象外にした記事のタイトルは CloudWatch Logs の「Filtered as out_of_focus」で確認し、週刊AWSの担当として必要な記事が落ちていないかを見る
+## 次の一手 <!-- next-move: 2026-10-14 -->
+- サーバレス絞り込みは 10-14 に無効化（本人「やっぱりもどして、サーバレスはllmのスケジュールで取得するわ」）。SSM `/whatsnew-agent/filter/config` に `"focus":{"enabled":false}` を書き込み（Version 2）、本番コードの parse_filter_config で無効と読めることを確認。再デプロイなし、コードとアラームは残置
+- 確認待ち: 10-15 朝 7:00 の実行で out_of_focus が 0 になり、全件配信に戻ったことをログで見る
+- 10-10〜10-14 に対象外として配信しなかった記事が 15 件ある（10-10 が 1、10-13 が 4、10-14 が 10）。DynamoDB に filtered で記録済みのため、無効化しても再配信はされない
 - cdk deploy は ALERT_EMAIL を付けて本人が `!` で実行する（付けないと通知先メールの購読が消える。knowledge.md の 10-10）
 - 以下は 07-18 時点から持ち越し
 - ⏳てつてつ: LINE図解ボタンの実機タップ確認（SNS のメール購読は 10-10 に確認済みの状態と確認）
